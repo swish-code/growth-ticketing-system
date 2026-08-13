@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ApiError, api, type AppUser } from '../api';
+import { IconClose } from './Icons';
 
 interface Props {
   user: AppUser;
@@ -50,9 +51,7 @@ export function AccountPanel({ user, onClose, onUpdated }: Props) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <h2>My account</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
         </header>
 
         <div className="modal-body">

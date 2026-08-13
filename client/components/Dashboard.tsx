@@ -10,6 +10,7 @@ import {
 } from '../../shared/spec';
 import type { AppUser } from '../api';
 import { formatDuration } from '../lib/format';
+import { IconAlert, IconCheck, IconClock, IconInbox } from './Icons';
 
 interface Props {
   user: AppUser;
@@ -24,6 +25,11 @@ function isLate(ticket: Ticket, today: string): boolean {
     return ticket.completedAt ? toDateKey(ticket.completedAt) > ticket.campaignDate : false;
   }
   return ticket.campaignDate < today;
+}
+
+function percent(part: number, whole: number): string {
+  if (!whole) return '—';
+  return `${Math.round((part / whole) * 100)}% of all requests`;
 }
 
 export function Dashboard({ user, tickets }: Props) {
@@ -50,8 +56,7 @@ export function Dashboard({ user, tickets }: Props) {
             accepted.length
           : null;
         const overdue = areaTickets.filter(
-          (t) =>
-            (t.status === 'New' && now - t.createdAt > ACCEPTANCE_SLA_MS) || isLate(t, today),
+          (t) => (t.status === 'New' && now - t.createdAt > ACCEPTANCE_SLA_MS) || isLate(t, today),
         ).length;
         return { tab, count: areaTickets.length, responseMs, overdue };
       }),
@@ -80,36 +85,61 @@ export function Dashboard({ user, tickets }: Props) {
   }, [tickets, today]);
 
   const maxTabCount = Math.max(1, ...byTab.map((row) => row.count));
+  const totalOverdue = byTab.reduce((sum, row) => sum + row.overdue, 0);
 
   return (
     <section className="page">
       <header className="page-head">
         <div>
           <h1>Dashboard</h1>
-          <p className="muted">Live figures for every request you are permitted to see.</p>
+          <p>Live figures for every request you are permitted to see.</p>
         </div>
       </header>
 
       <div className="stat-grid">
-        <Stat label="Total requests" value={stats.total} />
-        <Stat label="Open" value={stats.open} />
-        <Stat label="Finished" value={stats.finished} />
-        <Stat label="Delayed over 24h" value={stats.delayed} tone={stats.delayed ? 'danger' : undefined} />
+        <Stat
+          Icon={IconInbox}
+          label="Total requests"
+          value={stats.total}
+          note={`Across ${tabs.length} permitted ${tabs.length === 1 ? 'tab' : 'tabs'}`}
+        />
+        <Stat
+          Icon={IconClock}
+          label="Open"
+          value={stats.open}
+          note={percent(stats.open, stats.total)}
+        />
+        <Stat
+          Icon={IconCheck}
+          label="Finished"
+          value={stats.finished}
+          note={percent(stats.finished, stats.total)}
+        />
+        <Stat
+          Icon={IconAlert}
+          label="Delayed over 24h"
+          value={stats.delayed}
+          note={stats.delayed ? 'Awaiting acceptance past SLA' : 'Every request accepted in time'}
+          tone={stats.delayed ? 'danger' : undefined}
+        />
       </div>
 
       <div className="panel-grid">
         <div className="panel">
           <h2>Requests by tab</h2>
+          <p className="muted small">Volume of submissions in each permitted tab.</p>
           {byTab.map(({ tab, count }) => (
             <div key={tab.id} className="bar-row">
-              <span className="bar-label">{tab.name}</span>
+              <span className="bar-label" title={tab.name}>
+                {tab.name}
+              </span>
               <span className="bar-track">
                 <span className="bar-fill" style={{ width: `${(count / maxTabCount) * 100}%` }} />
               </span>
               <span className="bar-value">{count}</span>
             </div>
           ))}
-          {!byTab.length && <p className="muted">No permitted tabs.</p>}
+          {!byTab.length && <p className="empty-note">No permitted tabs.</p>}
         </div>
 
         <div className="panel">
@@ -120,9 +150,7 @@ export function Dashboard({ user, tickets }: Props) {
               {byTab.map(({ tab, responseMs }) => (
                 <tr key={tab.id}>
                   <td>{tab.name}</td>
-                  <td className="right">
-                    {responseMs === null ? '—' : formatDuration(responseMs)}
-                  </td>
+                  <td className="right">{responseMs === null ? '—' : formatDuration(responseMs)}</td>
                 </tr>
               ))}
             </tbody>
@@ -140,17 +168,18 @@ export function Dashboard({ user, tickets }: Props) {
                   <td className="right">{count}</td>
                 </tr>
               ))}
-              {!workload.length && (
-                <tr>
-                  <td className="muted">Nothing assigned.</td>
-                </tr>
-              )}
             </tbody>
           </table>
+          {!workload.length && <p className="empty-note">Nothing assigned.</p>}
         </div>
 
         <div className="panel">
           <h2>Overdue by tab</h2>
+          <p className="muted small">
+            {totalOverdue
+              ? `${totalOverdue} request${totalOverdue === 1 ? '' : 's'} past an SLA or campaign date.`
+              : 'Nothing is past an SLA or campaign date.'}
+          </p>
           <table className="mini-table">
             <tbody>
               {byTab.map(({ tab, overdue }) => (
@@ -165,6 +194,7 @@ export function Dashboard({ user, tickets }: Props) {
 
         <div className="panel panel-wide">
           <h2>Brand performance</h2>
+          <p className="muted small">Volume, completed work and late requests per brand.</p>
           <table className="mini-table">
             <thead>
               <tr>
@@ -183,26 +213,36 @@ export function Dashboard({ user, tickets }: Props) {
                   <td className={`right ${entry.late ? 'text-danger' : ''}`}>{entry.late}</td>
                 </tr>
               ))}
-              {!brands.length && (
-                <tr>
-                  <td colSpan={4} className="muted">
-                    No requests yet.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
+          {!brands.length && <p className="empty-note">No requests yet.</p>}
         </div>
       </div>
     </section>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: 'danger' }) {
+function Stat({
+  Icon,
+  label,
+  value,
+  note,
+  tone,
+}: {
+  Icon: (p: { size?: number }) => React.ReactElement;
+  label: string;
+  value: number;
+  note?: string;
+  tone?: 'danger';
+}) {
   return (
     <div className={`stat ${tone === 'danger' ? 'stat-danger' : ''}`}>
-      <span className="stat-value">{value}</span>
-      <span className="stat-label">{label}</span>
+      <span className="stat-head">
+        <Icon size={17} />
+        {label}
+      </span>
+      <span className="stat-value">{value.toLocaleString()}</span>
+      {note && <span className="stat-note">{note}</span>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { ActivityEvent } from '../../shared/spec';
+import { IconClose } from './Icons';
 
 interface Props {
   events: ActivityEvent[];
@@ -17,7 +18,7 @@ export function Notifications({ events, onDismiss }: Props) {
             <div className="small">{event.message}</div>
           </div>
           <button className="icon-btn" onClick={() => onDismiss(event.id)} aria-label="Dismiss">
-            ✕
+            <IconClose size={16} />
           </button>
         </div>
       ))}

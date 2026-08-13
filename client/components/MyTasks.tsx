@@ -131,7 +131,7 @@ function TaskTable({
               return (
                 <tr key={ticket.id} className="clickable" onClick={() => onOpen(ticket)}>
                   <td>
-                    <strong>{ticket.id}</strong>
+                    <div className="cell-id">{ticket.id}</div>
                     <div className="muted small">{ticket.title}</div>
                   </td>
                   <td>{tabName(ticket.area)}</td>

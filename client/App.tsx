@@ -14,6 +14,7 @@ import { AccountPanel } from './components/AccountPanel';
 import { AdminPanel } from './components/AdminPanel';
 import { AuthScreen } from './components/AuthScreen';
 import { Dashboard } from './components/Dashboard';
+import { NAV_ICONS, IconBars, IconLogout, IconPlus } from './components/Icons';
 import { MyTasks } from './components/MyTasks';
 import { Notifications } from './components/Notifications';
 import { RequestDetail } from './components/RequestDetail';
@@ -23,6 +24,12 @@ import { TabView } from './components/TabView';
 const TICKET_POLL_MS = 60_000;
 const EVENT_POLL_MS = 8_000;
 const TOAST_TTL_MS = 5_000;
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
 
 export function App() {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -149,57 +156,82 @@ export function App() {
 
   const activeTab = getTab(view);
   const canCreateHere = Boolean(activeTab) && hasFormAccess(user);
+  const viewLabel =
+    activeTab?.name ??
+    (view === 'dashboard' ? 'Dashboard' : view === 'my-tasks' ? 'My Tasks' : 'Admin panel');
+
+  const navItem = (id: string, label: string) => (
+    <NavItem
+      key={id}
+      id={id}
+      label={label}
+      view={view}
+      onSelect={setView}
+      onClose={() => setMenuOpen(false)}
+    />
+  );
 
   return (
     <div className="shell">
       <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="brand">
-          <strong>Growth Department</strong>
-          <span className="muted small">Campaign Requests</span>
+          <span className="brand-mark">GD</span>
+          <div className="brand-text">
+            <strong>Growth Department</strong>
+            <span>Campaign Requests</span>
+          </div>
         </div>
 
         <nav>
-          {canSeeDashboard(user) && (
-            <NavItem id="dashboard" label="Dashboard" view={view} onSelect={setView} onClose={() => setMenuOpen(false)} />
-          )}
-          {canSeeMyTasks(user) && (
-            <NavItem id="my-tasks" label="My Tasks" view={view} onSelect={setView} onClose={() => setMenuOpen(false)} />
-          )}
+          {canSeeDashboard(user) && navItem('dashboard', 'Dashboard')}
+          {canSeeMyTasks(user) && navItem('my-tasks', 'My Tasks')}
+
           {tabs.length > 0 && <div className="nav-heading">Requests</div>}
-          {tabs.map((tab) => (
-            <NavItem
-              key={tab.id}
-              id={tab.id}
-              label={tab.name}
-              view={view}
-              onSelect={setView}
-              onClose={() => setMenuOpen(false)}
-            />
-          ))}
+          {tabs.map((tab) => navItem(tab.id, tab.name))}
+
           {user.isAdmin && (
             <>
               <div className="nav-heading">Administration</div>
-              <NavItem id="admin" label="Admin panel" view={view} onSelect={setView} onClose={() => setMenuOpen(false)} />
+              {navItem('admin', 'Admin panel')}
             </>
           )}
         </nav>
 
         <div className="sidebar-foot">
-          <button className="linklike" onClick={() => setShowAccount(true)}>
-            {user.name}
+          <button className="user-card" onClick={() => setShowAccount(true)}>
+            <span className="avatar">{initials(user.name)}</span>
+            <span className="user-card-text">
+              <strong>{user.name}</strong>
+              <span>{user.isAdmin ? 'Administrator' : (user.roleName ?? 'No role')}</span>
+            </span>
           </button>
-          <span className="muted small">{user.email}</span>
-          <span className="muted small">{user.isAdmin ? 'Administrator' : (user.roleName ?? 'No role')}</span>
-          <button className="btn btn-ghost" onClick={logout}>
+          <button className="btn btn-ghost full" onClick={logout}>
+            <IconLogout size={17} />
             Log out
           </button>
         </div>
       </aside>
 
-      <main className="main">
-        <button className="menu-toggle" onClick={() => setMenuOpen((v) => !v)} aria-label="Menu">
-          ☰
-        </button>
+      {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} />}
+
+      <div className="main">
+        <header className="topbar">
+          <button className="menu-toggle" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+            <IconBars />
+          </button>
+          <span className="topbar-crumb">Growth Department</span>
+          <span className="topbar-crumb" aria-hidden="true">
+            /
+          </span>
+          <span className="topbar-title">{viewLabel}</span>
+          <span className="topbar-spacer" />
+          {canCreateHere && (
+            <button className="btn btn-primary" onClick={() => setFormArea(activeTab!.id)}>
+              <IconPlus size={17} />
+              New request
+            </button>
+          )}
+        </header>
 
         <Notifications
           events={toasts}
@@ -234,15 +266,11 @@ export function App() {
             onFormSettings={setFormSettings}
           />
         )}
-      </main>
+      </div>
 
       {canCreateHere && (
-        <button
-          className="fab"
-          onClick={() => setFormArea(activeTab!.id)}
-          aria-label="New request"
-        >
-          +
+        <button className="fab" onClick={() => setFormArea(activeTab!.id)} aria-label="New request">
+          <IconPlus size={24} />
         </button>
       )}
 
@@ -288,6 +316,7 @@ function NavItem({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
+  const Icon = NAV_ICONS[id];
   return (
     <button
       className={`nav-item ${view === id ? 'active' : ''}`}
@@ -296,6 +325,7 @@ function NavItem({
         onClose();
       }}
     >
+      {Icon && <Icon size={19} />}
       {label}
     </button>
   );

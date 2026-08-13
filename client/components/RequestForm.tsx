@@ -9,6 +9,7 @@ import {
   type TabDef,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
+import { IconAlert, IconClose } from './Icons';
 
 interface Props {
   user: AppUser;
@@ -111,9 +112,7 @@ export function RequestForm({ user, tab, formSettings, onClose, onCreated }: Pro
             <h2>New {tab.name} request</h2>
             <p className="muted">All fields marked with * are required.</p>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
         </header>
 
         <form className="modal-body form-grid" onSubmit={handleSubmit}>
@@ -211,7 +210,12 @@ export function RequestForm({ user, tab, formSettings, onClose, onCreated }: Pro
             );
           })}
 
-          {error && <p className="form-error field-wide">{error}</p>}
+          {error && (
+            <p className="form-error field-wide">
+              <IconAlert size={17} />
+              <span>{error}</span>
+            </p>
+          )}
 
           <div className="modal-actions field-wide">
             <button type="button" className="btn btn-ghost" onClick={onClose}>

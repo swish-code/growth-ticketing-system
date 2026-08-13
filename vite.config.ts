@@ -11,7 +11,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080',
+      // Regex, not a prefix: a plain '/api' key also swallows the client's own
+      // /api.ts module request in dev.
+      '^/api/': 'http://localhost:8080',
     },
   },
 });

@@ -19,6 +19,7 @@ import {
   priorityClass,
   statusClass,
 } from '../lib/format';
+import { IconDownload, IconPlus } from './Icons';
 
 interface Props {
   user: AppUser;
@@ -81,6 +82,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
           <h1>{tab.name}</h1>
           {canSubmit && (
             <button className="btn btn-primary" onClick={onNew}>
+              <IconPlus size={17} />
               New request
             </button>
           )}
@@ -107,10 +109,12 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
         </div>
         <div className="head-actions">
           <button className="btn btn-ghost" onClick={() => exportCsv(tab, filtered)}>
+            <IconDownload size={17} />
             Export CSV
           </button>
           {canSubmit && (
             <button className="btn btn-primary" onClick={onNew}>
+              <IconPlus size={17} />
               New request
             </button>
           )}
@@ -178,7 +182,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
               return (
                 <tr key={ticket.id} className="clickable" onClick={() => onOpen(ticket)}>
                   <td>
-                    <strong>{ticket.id}</strong>
+                    <div className="cell-id">{ticket.id}</div>
                     <div className="muted small">{ticket.title}</div>
                   </td>
                   <td>{ticket.brand}</td>

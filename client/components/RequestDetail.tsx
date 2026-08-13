@@ -10,6 +10,7 @@ import {
   type Ticket,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
+import { IconClose } from './Icons';
 import {
   displayValue,
   formatDateKey,
@@ -107,9 +108,7 @@ export function RequestDetail({ user, ticket, onClose, onChanged }: Props) {
               {tabName(ticket.area)} · {ticket.brand}
             </p>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
         </header>
 
         <div className="modal-body">
