@@ -81,7 +81,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
         <header className="page-head">
           <h1>{tab.name}</h1>
           {canSubmit && (
-            <button className="btn btn-primary" onClick={onNew}>
+            <button className="btn btn-primary btn-new-request" onClick={onNew}>
               <IconPlus size={17} />
               New request
             </button>
@@ -113,7 +113,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
             Export CSV
           </button>
           {canSubmit && (
-            <button className="btn btn-primary" onClick={onNew}>
+            <button className="btn btn-primary btn-new-request" onClick={onNew}>
               <IconPlus size={17} />
               New request
             </button>

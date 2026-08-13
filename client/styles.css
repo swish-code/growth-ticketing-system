@@ -1598,6 +1598,12 @@ tr.clickable:hover {
     display: grid;
   }
 
+  /* The floating button is the mobile affordance — don't also keep the
+     header copy, which is what made "New request" appear twice. */
+  .btn-new-request {
+    display: none;
+  }
+
   /* `visibility` rides along with the slide so a closed drawer is also out of
      the tab order, not just off-screen. */
   .sidebar {

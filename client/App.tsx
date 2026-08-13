@@ -225,12 +225,6 @@ export function App() {
           </span>
           <span className="topbar-title">{viewLabel}</span>
           <span className="topbar-spacer" />
-          {canCreateHere && (
-            <button className="btn btn-primary" onClick={() => setFormArea(activeTab!.id)}>
-              <IconPlus size={17} />
-              New request
-            </button>
-          )}
         </header>
 
         <Notifications
