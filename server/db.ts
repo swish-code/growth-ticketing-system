@@ -7,9 +7,23 @@ import {
 
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL;
+/**
+ * Railway exposes the Postgres URL under different names depending on how the
+ * database was attached (a referenced variable, the private network URL, or the
+ * plugin default), so accept any of them.
+ */
+const connectionString =
+  process.env.DATABASE_URL ||
+  process.env.DATABASE_PRIVATE_URL ||
+  process.env.DATABASE_PUBLIC_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.PGURL;
+
 if (!connectionString) {
-  throw new Error('DATABASE_URL is not set. Copy .env.example and provide a Postgres connection string.');
+  throw new Error(
+    'No Postgres connection string found. Set DATABASE_URL on the service — on Railway, ' +
+      'add a PostgreSQL database and reference it as ${{Postgres.DATABASE_URL}}.',
+  );
 }
 
 const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
