@@ -164,8 +164,8 @@ function StaffSection() {
           </button>
         </div>
         <p className="muted small">
-          The staff member then uses <strong>Log in</strong> — not Create account — and the password
-          they type on first login becomes their password.
+          The staff member then signs in with <strong>Log in</strong>, and the password they type on
+          that first login becomes their password.
         </p>
       </div>
 

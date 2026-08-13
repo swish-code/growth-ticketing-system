@@ -91,7 +91,9 @@ async function handleLogin(req: Request, res: Response): Promise<Response> {
   );
 
   if (!account.rowCount) {
-    return res.status(404).json({ error: 'No account found for this email. Create an account first.' });
+    return res.status(404).json({
+      error: 'No account found for this email. Ask an administrator to add you as staff.',
+    });
   }
 
   const row = account.rows[0];
