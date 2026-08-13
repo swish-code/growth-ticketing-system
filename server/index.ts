@@ -27,8 +27,24 @@ app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown endpoint.'
 
 // Built SPA. `dist/server/index.js` → `dist/client`.
 const clientDir = path.resolve(__dirname, '../client');
-app.use(express.static(clientDir));
-app.get('*', (_req, res) => res.sendFile(path.join(clientDir, 'index.html')));
+
+// Vite fingerprints every file under /assets, so a new build is a new URL and
+// these can be cached for a year. Without this they default to max-age=0 and
+// the browser revalidates all of them on every single load.
+app.use(
+  '/assets',
+  express.static(path.join(clientDir, 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+  }),
+);
+
+// index.html carries the asset hashes, so it must never be cached.
+app.use(express.static(clientDir, { etag: true, maxAge: 0 }));
+app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(clientDir, 'index.html'));
+});
 
 async function start(): Promise<void> {
   await initSchema();

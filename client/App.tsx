@@ -42,6 +42,7 @@ export function App() {
   const [showAccount, setShowAccount] = useState(false);
   const [toasts, setToasts] = useState<ActivityEvent[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const lastEventTs = useRef(0);
 
@@ -128,16 +129,15 @@ export function App() {
   /* ------------------------------- logout ------------------------------ */
 
   async function logout() {
+    setSigningOut(true);
     try {
       await api.logout();
     } catch {
       /* the cookie is cleared regardless */
     }
+    // The response's Clear-Site-Data: "storage" already drops cookies,
+    // IndexedDB and Cache Storage; these two are synchronous belt-and-braces.
     try {
-      if (window.caches) {
-        const keys = await window.caches.keys();
-        await Promise.all(keys.map((key) => window.caches.delete(key)));
-      }
       window.localStorage.clear();
       window.sessionStorage.clear();
     } catch {
@@ -205,9 +205,9 @@ export function App() {
               <span>{user.isAdmin ? 'Administrator' : (user.roleName ?? 'No role')}</span>
             </span>
           </button>
-          <button className="btn btn-ghost full" onClick={logout}>
+          <button className="btn btn-ghost full" onClick={logout} disabled={signingOut}>
             <IconLogout size={17} />
-            Log out
+            {signingOut ? 'Signing out…' : 'Log out'}
           </button>
         </div>
       </aside>

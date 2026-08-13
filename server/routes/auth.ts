@@ -11,6 +11,7 @@ import {
   needsMigration,
   normalizeEmail,
   resolveViewer,
+  resolveViewerByEmail,
   setSessionCookie,
   verifyPassword,
 } from '../auth';
@@ -102,7 +103,7 @@ async function handleLogin(req: Request, res: Response): Promise<Response> {
   if (firstOrReset) {
     // First login after admin creation or a password reset stores the password
     // the staff member typed (spec §4.3 / §4.7).
-    const { hash, salt, iterations } = hashPassword(password);
+    const { hash, salt, iterations } = await hashPassword(password);
     await query(
       `UPDATE accounts
        SET password_hash = $2, password_salt = $3, password_iterations = $4, must_set_password = FALSE
@@ -115,11 +116,11 @@ async function handleLogin(req: Request, res: Response): Promise<Response> {
       salt: row.password_salt as string,
       iterations: row.password_iterations ?? 0,
     };
-    if (!verifyPassword(password, stored)) {
+    if (!(await verifyPassword(password, stored))) {
       return res.status(401).json({ error: 'Incorrect password.' });
     }
     if (needsMigration(stored)) {
-      const migrated = hashPassword(password);
+      const migrated = await hashPassword(password);
       await query(
         `UPDATE accounts SET password_hash = $2, password_salt = $3, password_iterations = $4 WHERE email = $1`,
         [email, migrated.hash, migrated.salt, migrated.iterations],
@@ -130,7 +131,7 @@ async function handleLogin(req: Request, res: Response): Promise<Response> {
   const sessionId = await createSession(email);
   setSessionCookie(res, sessionId);
 
-  const viewer = await resolveViewer(req);
+  const viewer = await resolveViewerByEmail(email);
   return res.json({ user: viewer ? publicUser(viewer) : null });
 }
 
@@ -140,7 +141,11 @@ async function handleLogout(req: Request, res: Response): Promise<Response> {
   const sessionId = req.cookies?.[SESSION_COOKIE];
   if (sessionId) await deleteSession(sessionId);
   clearSessionCookie(res);
-  res.setHeader('Clear-Site-Data', '"cache", "storage"');
+  // "storage" already clears cookies, localStorage, sessionStorage, IndexedDB
+  // and Cache Storage — every place user data can live. "cache" is deliberately
+  // omitted: it only evicts the fingerprinted JS/CSS, which holds no user data,
+  // and forced a full re-download on every logout.
+  res.setHeader('Clear-Site-Data', '"storage"');
   return res.json({ ok: true });
 }
 
@@ -156,7 +161,7 @@ async function handleUpdateName(req: Request, res: Response): Promise<Response> 
   await query(`UPDATE accounts SET name = $2 WHERE email = $1`, [viewer.email, name]);
   await query(`UPDATE staff SET name = $2 WHERE email = $1`, [viewer.email, name]);
 
-  const updated = await resolveViewer(req);
+  const updated = await resolveViewerByEmail(viewer.email);
   return res.json({ user: updated ? publicUser(updated) : null });
 }
 
@@ -185,7 +190,7 @@ async function handleChangePassword(req: Request, res: Response): Promise<Respon
 
   const row = account.rows[0];
   if (row.password_hash && row.password_salt) {
-    const ok = verifyPassword(currentPassword, {
+    const ok = await verifyPassword(currentPassword, {
       hash: row.password_hash,
       salt: row.password_salt,
       iterations: row.password_iterations ?? 0,
@@ -193,7 +198,7 @@ async function handleChangePassword(req: Request, res: Response): Promise<Respon
     if (!ok) return res.status(401).json({ error: 'Current password is incorrect.' });
   }
 
-  const { hash, salt, iterations } = hashPassword(newPassword);
+  const { hash, salt, iterations } = await hashPassword(newPassword);
   await query(
     `UPDATE accounts
      SET password_hash = $2, password_salt = $3, password_iterations = $4, must_set_password = FALSE

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { promisify } from 'node:util';
 import type { Request, Response } from 'express';
 import {
   ADMIN_ROLE_ID,
@@ -27,18 +28,26 @@ export interface PasswordHash {
   iterations: number;
 }
 
-export function hashPassword(password: string, salt?: string, iterations = ITERATIONS): PasswordHash {
+const pbkdf2 = promisify(crypto.pbkdf2);
+
+/**
+ * Async on purpose: the sync variant blocks the event loop for the whole
+ * derivation, so concurrent sign-ins would queue behind each other.
+ */
+export async function hashPassword(
+  password: string,
+  salt?: string,
+  iterations = ITERATIONS,
+): Promise<PasswordHash> {
   const usedSalt = salt ?? crypto.randomBytes(16).toString('hex');
-  const hash = crypto
-    .pbkdf2Sync(password, usedSalt, iterations, KEY_LENGTH, DIGEST)
-    .toString('hex');
-  return { hash, salt: usedSalt, iterations };
+  const derived = await pbkdf2(password, usedSalt, iterations, KEY_LENGTH, DIGEST);
+  return { hash: derived.toString('hex'), salt: usedSalt, iterations };
 }
 
-export function verifyPassword(password: string, stored: PasswordHash): boolean {
+export async function verifyPassword(password: string, stored: PasswordHash): Promise<boolean> {
   const iterations = stored.iterations || LEGACY_ITERATIONS;
-  const candidate = hashPassword(password, stored.salt, iterations).hash;
-  const a = Buffer.from(candidate, 'hex');
+  const candidate = await hashPassword(password, stored.salt, iterations);
+  const a = Buffer.from(candidate.hash, 'hex');
   const b = Buffer.from(stored.hash, 'hex');
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
@@ -154,7 +163,15 @@ export async function resolveViewer(req: Request): Promise<Viewer | null> {
     return null;
   }
 
-  const email = session.rows[0].email;
+  return resolveViewerByEmail(session.rows[0].email);
+}
+
+/**
+ * Same resolution without the session lookup — used right after sign-in, where
+ * the account is already known and re-reading the session it just created
+ * would be a wasted round trip.
+ */
+export async function resolveViewerByEmail(email: string): Promise<Viewer | null> {
   const account = await query<AccountRow>(
     `SELECT email, name, brands, must_set_password FROM accounts WHERE email = $1`,
     [email],
