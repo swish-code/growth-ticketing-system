@@ -1,0 +1,35 @@
+{
+  "name": "growth-ticketing-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Growth Department — Campaign Requests ticketing system",
+  "scripts": {
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "dev": "vite",
+    "start": "node dist/server/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}
