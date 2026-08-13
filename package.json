@@ -14,12 +14,8 @@
   "engines": {
     "node": ">=20"
   },
+  "comment": "Build-time packages live in dependencies on purpose: the deploy runs `npm ci` with NODE_ENV=production, which skips devDependencies, and `npm run build` needs vite, typescript and react.",
   "dependencies": {
-    "cookie-parser": "^1.4.7",
-    "express": "^4.21.2",
-    "pg": "^8.13.1"
-  },
-  "devDependencies": {
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.5",
@@ -27,6 +23,9 @@
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.3",
