@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BRANDS, COMPANY_DOMAIN, TABS } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
 import { IconAlert, IconCheck, IconClock, IconShield } from './Icons';
+import { ThemeToggle } from './ThemeToggle';
 
 interface Props {
   onSignedIn: (user: AppUser) => void;
@@ -93,6 +94,7 @@ export function AuthScreen({ onSignedIn }: Props) {
       </aside>
 
       <main className="auth-form-side">
+        <ThemeToggle className="auth-theme" />
         <div className="auth-form">
           <div className="auth-mobile-brand">
             <span className="brand-mark">GD</span>

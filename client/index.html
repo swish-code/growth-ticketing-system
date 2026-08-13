@@ -2,9 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f4f1" />
+    <meta
+      name="description"
+      content="Growth Department — internal campaign request management for Swish brands."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Growth Department — Campaign Requests</title>
+    <script>
+      // Stamp the resolved theme before first paint so dark machines never
+      // flash light. Mirrors client/lib/theme.ts.
+      (function () {
+        var dark = false;
+        try {
+          var pref = localStorage.getItem('gts-theme');
+          dark =
+            pref === 'dark' ||
+            (pref !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        } catch (e) {
+          /* default to light */
+        }
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#0d0d0d' : '#f4f4f1');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

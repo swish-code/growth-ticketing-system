@@ -65,9 +65,12 @@
   text-rendering: optimizeLegibility;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
+/* Dark tokens. JS resolves the "system" preference and always stamps
+   data-theme="light" | "dark" on <html> (inline script in index.html before
+   first paint, client/lib/theme.ts afterwards), so no media query is needed
+   here and a manual choice wins over the OS in both directions. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
 
     --plane: #0d0d0d;
     --surface: #1a1a19;
@@ -102,7 +105,6 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -8px rgba(0, 0, 0, 0.7);
     --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.4), 0 24px 48px -16px rgba(0, 0, 0, 0.8);
-  }
 }
 
 * {
@@ -676,6 +678,7 @@ input[type='checkbox'] {
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -827,39 +830,37 @@ tr.clickable:hover {
   display: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .badge-new {
+:root[data-theme='dark'] .badge-new {
     --badge-bg: #16243a;
     --badge-ink: #9cc5f5;
     --badge-dot: #3987e5;
   }
-  :root:not([data-theme='light']) .badge-progress {
+  :root[data-theme='dark'] .badge-progress {
     --badge-bg: #2e2410;
     --badge-ink: #f3c661;
     --badge-dot: #fab219;
   }
-  :root:not([data-theme='light']) .badge-scheduled {
+  :root[data-theme='dark'] .badge-scheduled {
     --badge-bg: #211e3b;
     --badge-ink: #bab2f2;
     --badge-dot: #9085e9;
   }
-  :root:not([data-theme='light']) .badge-done,
-  :root:not([data-theme='light']) .badge-low {
+  :root[data-theme='dark'] .badge-done,
+  :root[data-theme='dark'] .badge-low {
     --badge-bg: #0f2a0f;
     --badge-ink: #66d166;
     --badge-dot: #0ca30c;
   }
-  :root:not([data-theme='light']) .badge-declined,
-  :root:not([data-theme='light']) .badge-high {
+  :root[data-theme='dark'] .badge-declined,
+  :root[data-theme='dark'] .badge-high {
     --badge-bg: #331616;
     --badge-ink: #f49a9a;
     --badge-dot: #e66767;
   }
-  :root:not([data-theme='light']) .badge-medium {
-    --badge-bg: #32201a;
-    --badge-ink: #f2ab8a;
-    --badge-dot: #ec835a;
-  }
+:root[data-theme='dark'] .badge-medium {
+  --badge-bg: #32201a;
+  --badge-ink: #f2ab8a;
+  --badge-dot: #ec835a;
 }
 
 /* ==========================================================================
@@ -1484,10 +1485,25 @@ tr.clickable:hover {
 }
 
 .auth-form-side {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 2.5rem 2rem;
   background: var(--surface);
+}
+
+.auth-theme {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
+.theme-toggle {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.theme-toggle:hover {
+  background: var(--surface-3);
 }
 
 .auth-form {
@@ -1533,8 +1549,9 @@ tr.clickable:hover {
 .fab {
   display: none;
   position: fixed;
-  right: 1.1rem;
-  bottom: 1.1rem;
+  /* Clear the home-indicator / notch areas on phones. */
+  right: calc(1.1rem + env(safe-area-inset-right, 0px));
+  bottom: calc(1.1rem + env(safe-area-inset-bottom, 0px));
   width: 54px;
   height: 54px;
   border-radius: 50%;
@@ -1636,6 +1653,81 @@ tr.clickable:hover {
 
   .modal-backdrop {
     padding: 1rem 0.6rem;
+  }
+}
+
+/* Phone-size refinements on top of the 900px drawer breakpoint. */
+@media (max-width: 640px) {
+  .topbar-crumb {
+    display: none;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+  .stat {
+    padding: 0.85rem 0.95rem;
+  }
+  .stat-value {
+    font-size: 1.7rem;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filters input,
+  .filters select {
+    flex: 1 1 45%;
+    min-width: 0;
+  }
+  .date-filter {
+    flex: 1 1 100%;
+  }
+  .date-filter input {
+    flex: 1;
+  }
+
+  .head-actions {
+    width: 100%;
+  }
+  .head-actions .btn {
+    flex: 1;
+  }
+
+  .modal-backdrop {
+    padding: 0.5rem;
+  }
+  .modal {
+    max-height: 96vh;
+    border-radius: var(--r-lg);
+  }
+  .modal-head {
+    padding: 0.95rem 1rem;
+  }
+  .modal-body {
+    padding: 1rem;
+  }
+
+  th,
+  td {
+    padding: 0.6rem 0.7rem;
+  }
+
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .detail-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    width: min(300px, 86vw);
+  }
+
+  .auth-form {
+    padding: 1.5rem;
   }
 }
 

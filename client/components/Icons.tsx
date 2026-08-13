@@ -183,6 +183,27 @@ export const IconAlert = (p: IconProps) =>
     p,
   );
 
+export const IconSun = (p: IconProps) =>
+  svg(
+    <>
+      <circle cx="12" cy="12" r="4.2" />
+      <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7" />
+    </>,
+    p,
+  );
+
+export const IconMoon = (p: IconProps) =>
+  svg(<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z" />, p);
+
+export const IconMonitor = (p: IconProps) =>
+  svg(
+    <>
+      <rect x="3" y="4.5" width="18" height="13" rx="2" />
+      <path d="M9 21h6M12 17.5V21" />
+    </>,
+    p,
+  );
+
 /** Sidebar icon per view id. */
 export const NAV_ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   dashboard: IconDashboard,

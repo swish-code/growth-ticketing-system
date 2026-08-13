@@ -20,6 +20,8 @@ import { Notifications } from './components/Notifications';
 import { RequestDetail } from './components/RequestDetail';
 import { RequestForm } from './components/RequestForm';
 import { TabView } from './components/TabView';
+import { ThemeToggle } from './components/ThemeToggle';
+import { THEME_STORAGE_KEY } from './lib/theme';
 
 const TICKET_POLL_MS = 60_000;
 const EVENT_POLL_MS = 8_000;
@@ -137,9 +139,12 @@ export function App() {
     }
     // The response's Clear-Site-Data: "storage" already drops cookies,
     // IndexedDB and Cache Storage; these two are synchronous belt-and-braces.
+    // The theme choice is UI preference, not user data — carry it across.
     try {
+      const theme = window.localStorage.getItem(THEME_STORAGE_KEY);
       window.localStorage.clear();
       window.sessionStorage.clear();
+      if (theme) window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch {
       /* storage may be unavailable in private mode */
     }
@@ -225,6 +230,7 @@ export function App() {
           </span>
           <span className="topbar-title">{viewLabel}</span>
           <span className="topbar-spacer" />
+          <ThemeToggle />
         </header>
 
         <Notifications
