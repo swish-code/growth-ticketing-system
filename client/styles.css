@@ -775,25 +775,14 @@ tr.clickable:hover {
   width: min(520px, 100%);
 }
 
-.auth-tabs {
-  display: flex;
-  gap: 0.4rem;
-  margin: 1rem 0 1.25rem;
+.auth-card form {
+  margin-top: 1.25rem;
 }
-.auth-tabs button {
-  flex: 1;
-  border: 1px solid var(--border);
-  background: var(--surface-alt);
-  border-radius: 10px;
-  padding: 0.55rem;
-  cursor: pointer;
-  font-size: 0.95rem;
-  color: inherit;
-}
-.auth-tabs button.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+
+.auth-note {
+  margin: 1.1rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
 }
 
 /* ---------------------------------- fab --------------------------------- */

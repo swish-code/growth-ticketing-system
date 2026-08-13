@@ -89,11 +89,15 @@ npm run check
 4. On first boot the schema is created and the protected owner account
    `phelo@swishhh.net` is seeded as a **pending** account.
 
-### First sign-in
+### Accounts and first sign-in
 
-`phelo@swishhh.net` uses **Log in** (not Create account). The password typed at that first
-login becomes the owner's password. The same flow applies to any staff member an
-administrator creates.
+There is **no self-registration** — the sign-in screen offers Log in only. Every account is
+created by an administrator in **Admin panel → Staff access**, and the `register` API action
+is refused by the backend.
+
+A newly created staff member (and the seeded owner `phelo@swishhh.net`) signs in with
+**Log in**: the password typed at that first login becomes their password. The same applies
+after an administrator triggers a password reset.
 
 ---
 
@@ -165,7 +169,7 @@ no separate cron worker.
 
 | Endpoint | Methods | Access |
 |---|---|---|
-| `/api/auth` | `GET`, `POST` (`register`, `login`, `logout`, `updateName`, `changePassword`) | Public / signed-in |
+| `/api/auth` | `GET`, `POST` (`login`, `logout`, `updateName`, `changePassword`; `register` returns 403) | Public / signed-in |
 | `/api/tickets` | `GET`, `GET ?audit=<id>`, `POST`/`PATCH` (`create`, `update`), `DELETE` | Signed-in; delete is admin-only |
 | `/api/staff` | `GET`, `POST` (`create`, `update`, `reset`), `DELETE` | Administrators |
 | `/api/roles` | `GET`, `POST`, `DELETE` | Administrators |

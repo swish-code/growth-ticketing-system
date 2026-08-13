@@ -583,13 +583,6 @@ export function adminPermissions(): RolePermissions {
   return { tabs, brands: [], forms: true, submissions: true };
 }
 
-/** Permissions granted by self-registration (spec §4.2). */
-export function submitterPermissions(brands: string[]): RolePermissions {
-  const tabs: Record<string, TabAccess> = {};
-  for (const id of TAB_IDS) tabs[id] = 'view';
-  return { tabs, brands, forms: true, submissions: true };
-}
-
 export function normalizePermissions(raw: unknown): RolePermissions {
   const base = emptyPermissions();
   if (!raw || typeof raw !== 'object') return base;

@@ -68,9 +68,8 @@ function post<T>(url: string, body: unknown, timeoutMs?: number): Promise<T> {
 export const api = {
   me: () => request<{ user: AppUser | null }>('/api/auth'),
 
-  register: (payload: { email: string; name: string; brands: string[]; password: string }) =>
-    post<{ user: AppUser }>('/api/auth', { action: 'register', ...payload }),
-
+  // There is no self-registration: administrators create every account from
+  // Admin panel → Staff access.
   login: (payload: { email: string; password: string }) =>
     post<{ user: AppUser }>('/api/auth', { action: 'login', ...payload }),
 

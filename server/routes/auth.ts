@@ -1,12 +1,5 @@
-import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import {
-  ADMIN_ROLE_ID,
-  BRANDS,
-  allowedBrands,
-  submitterPermissions,
-  type Brand,
-} from '../../shared/spec';
+import { allowedBrands } from '../../shared/spec';
 import { query } from '../db';
 import {
   SESSION_COOKIE,
@@ -15,7 +8,6 @@ import {
   deleteSession,
   hashPassword,
   isCompanyEmail,
-  isOwner,
   needsMigration,
   normalizeEmail,
   resolveViewer,
@@ -51,7 +43,11 @@ authRouter.post('/', async (req, res) => {
   try {
     switch (action) {
       case 'register':
-        return await handleRegister(req, res);
+        // Self-registration is disabled: only administrators create accounts,
+        // from Admin panel → Staff access.
+        return res.status(403).json({
+          error: 'Accounts are created by administrators only. Ask an administrator to add you.',
+        });
       case 'login':
         return await handleLogin(req, res);
       case 'logout':
@@ -68,68 +64,6 @@ authRouter.post('/', async (req, res) => {
     return res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
-
-/* ------------------------------- register ------------------------------- */
-
-async function handleRegister(req: Request, res: Response): Promise<Response> {
-  const email = normalizeEmail(req.body?.email);
-  const name = String(req.body?.name ?? '').trim();
-  const password = String(req.body?.password ?? '');
-  const brands = Array.isArray(req.body?.brands)
-    ? (req.body.brands as unknown[]).map(String).filter((b) => BRANDS.includes(b as Brand))
-    : [];
-
-  if (!isCompanyEmail(email)) {
-    return res.status(400).json({ error: 'Email must be a valid @swishhh.net company address.' });
-  }
-  if (!name) return res.status(400).json({ error: 'Name is required.' });
-  if (!brands.length) return res.status(400).json({ error: 'Select at least one brand.' });
-  if (password.length < MIN_PASSWORD) {
-    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD} characters.` });
-  }
-
-  const existing = await query<{ must_set_password: boolean }>(
-    `SELECT must_set_password FROM accounts WHERE email = $1`,
-    [email],
-  );
-  if (existing.rowCount) {
-    return res.status(409).json({
-      error: existing.rows[0].must_set_password
-        ? 'An administrator already created this account. Use Log in and set your password there.'
-        : 'This account already exists. Please log in.',
-    });
-  }
-
-  const now = Date.now();
-  const { hash, salt, iterations } = hashPassword(password);
-  const roleId = `role-${crypto.randomUUID()}`;
-
-  await query(
-    `INSERT INTO roles (id, name, permissions, created_at) VALUES ($1, $2, $3, $4)`,
-    [roleId, `${name} — Brand submitter`, JSON.stringify(submitterPermissions(brands)), now],
-  );
-
-  await query(
-    `INSERT INTO accounts
-       (email, name, primary_brand, brands, password_hash, password_salt, password_iterations,
-        must_set_password, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8)`,
-    [email, name, brands[0], JSON.stringify(brands), hash, salt, iterations, now],
-  );
-
-  await query(
-    `INSERT INTO staff (email, name, role_id, is_admin, created_at)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, role_id = EXCLUDED.role_id`,
-    [email, name, isOwner(email) ? ADMIN_ROLE_ID : roleId, isOwner(email), now],
-  );
-
-  const sessionId = await createSession(email);
-  setSessionCookie(res, sessionId);
-
-  const viewer = await resolveViewer(req);
-  return res.json({ user: viewer ? publicUser(viewer) : null });
-}
 
 /* --------------------------------- login -------------------------------- */
 
