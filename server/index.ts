@@ -2,6 +2,7 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { initSchema } from './db';
+import { logMailStatus } from './mailer';
 import { authRouter } from './routes/auth';
 import { ticketsRouter } from './routes/tickets';
 import { formsRouter, rolesRouter, staffRouter } from './routes/admin';
@@ -48,6 +49,7 @@ app.get('*', (_req, res) => {
 
 async function start(): Promise<void> {
   await initSchema();
+  logMailStatus();
   app.listen(port, () => {
     console.log(`Growth Ticketing System listening on :${port}`);
   });

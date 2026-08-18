@@ -31,6 +31,7 @@ import {
   type TicketRow,
 } from '../tickets';
 import { validateSubmission } from '../validate';
+import { notifyTicketEvent } from '../mailer';
 
 export const ticketsRouter = Router();
 
@@ -143,6 +144,7 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   );
 
   const created = await getTicket(id);
+  if (created) notifyTicketEvent('created', created, { name: viewer.name, email: viewer.email });
   return res.json({ ticket: created });
 }
 
@@ -194,7 +196,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       id,
       ticket.area,
     );
-    return res.json({ ticket: mapTicket(claimed.rows[0]) });
+    const accepted = mapTicket(claimed.rows[0]);
+    notifyTicketEvent('accepted', accepted, actor);
+    return res.json({ ticket: accepted });
   }
 
   // Every other action respects the assignment lock (spec §15.3).
@@ -225,7 +229,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       id,
       ticket.area,
     );
-    return res.json({ ticket: await getTicket(id) });
+    const declined = await getTicket(id);
+    if (declined) notifyTicketEvent('declined', declined, actor, reason);
+    return res.json({ ticket: declined });
   }
 
   /* ------------------------------ schedule ------------------------------ */
@@ -255,7 +261,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       id,
       ticket.area,
     );
-    return res.json({ ticket: await getTicket(id) });
+    const scheduled = await getTicket(id);
+    if (scheduled) notifyTicketEvent('scheduled', scheduled, actor);
+    return res.json({ ticket: scheduled });
   }
 
   /* -------------------------------- done -------------------------------- */
@@ -283,7 +291,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       id,
       ticket.area,
     );
-    return res.json({ ticket: await getTicket(id) });
+    const completed = await getTicket(id);
+    if (completed) notifyTicketEvent('done', completed, actor);
+    return res.json({ ticket: completed });
   }
 
   /* -------------------------------- notes ------------------------------- */
@@ -298,7 +308,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       id,
       ticket.area,
     );
-    return res.json({ ticket: await getTicket(id) });
+    const noted = await getTicket(id);
+    if (noted) notifyTicketEvent('updated', noted, actor, 'The staff notes were updated.');
+    return res.json({ ticket: noted });
   }
 
   return res.status(400).json({ error: 'Unknown workflow action.' });
@@ -326,6 +338,7 @@ ticketsRouter.delete('/', async (req: Request, res: Response) => {
     id,
     ticket.area,
   );
+  notifyTicketEvent('deleted', ticket, { name: viewer.name, email: viewer.email });
 
   return res.json({ ok: true });
 });

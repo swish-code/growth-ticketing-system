@@ -11,6 +11,7 @@ import {
   type TicketStatus,
 } from '../shared/spec';
 import { query } from './db';
+import { notifyTicketEvent } from './mailer';
 
 /* ------------------------------------------------------------------ */
 /* Row mapping                                                         */
@@ -217,6 +218,11 @@ export async function processDueAndEscalations(): Promise<void> {
       row.id,
       row.area,
       `auto-done-event-${row.id}`,
+    );
+    notifyTicketEvent(
+      'done',
+      { ...mapTicket(row), status: 'Done', completedAt: now },
+      SYSTEM_ACTOR,
     );
   }
 

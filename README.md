@@ -191,6 +191,24 @@ keeps its own fields. Dates are stored as `YYYY-MM-DD`; timestamps as epoch mill
 
 ---
 
+## Email notifications
+
+When a request is created, accepted, declined, scheduled, completed (including
+automatic Scheduled → Done), updated or deleted, an email goes to the
+**requester**, the **assignee** and the **acting staff member** (deduplicated).
+
+Notifications are disabled until SMTP is configured on the service:
+
+| Variable | Meaning |
+|---|---|
+| `SMTP_HOST` / `SMTP_PORT` | Mail server (587 default; 465 implies TLS) |
+| `SMTP_USER` / `SMTP_PASS` | Mailbox credentials (Gmail needs an App Password) |
+| `MAIL_FROM` | Optional From header, defaults to `SMTP_USER` |
+| `APP_URL` | Link target used in the emails |
+
+Sending is fire-and-forget: a mail failure is logged but never fails or slows
+the API request that triggered it.
+
 ## Security
 
 - Sessions are HTTP-only, `SameSite=Lax`, `Secure` in production, and expire after 7 days.
