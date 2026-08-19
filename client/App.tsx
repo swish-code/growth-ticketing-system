@@ -13,6 +13,7 @@ import { api, type AppUser } from './api';
 import { AccountPanel } from './components/AccountPanel';
 import { AdminPanel } from './components/AdminPanel';
 import { AuthScreen } from './components/AuthScreen';
+import { CalendarView } from './components/CalendarView';
 import { Dashboard } from './components/Dashboard';
 import { NAV_ICONS, IconBars, IconLogout, IconPlus } from './components/Icons';
 import { MyTasks } from './components/MyTasks';
@@ -120,7 +121,7 @@ export function App() {
   useEffect(() => {
     if (!user) return;
     const allowed = [
-      ...(canSeeDashboard(user) ? ['dashboard'] : []),
+      ...(canSeeDashboard(user) ? ['dashboard', 'calendar'] : []),
       ...(canSeeMyTasks(user) ? ['my-tasks'] : []),
       ...tabs.map((t) => t.id),
       ...(user.isAdmin ? ['admin'] : []),
@@ -163,7 +164,13 @@ export function App() {
   const canCreateHere = Boolean(activeTab) && hasFormAccess(user);
   const viewLabel =
     activeTab?.name ??
-    (view === 'dashboard' ? 'Dashboard' : view === 'my-tasks' ? 'My Tasks' : 'Admin panel');
+    (view === 'dashboard'
+      ? 'Dashboard'
+      : view === 'calendar'
+        ? 'Calendar'
+        : view === 'my-tasks'
+          ? 'My Tasks'
+          : 'Admin panel');
 
   const navItem = (id: string, label: string) => (
     <NavItem
@@ -189,6 +196,7 @@ export function App() {
 
         <nav>
           {canSeeDashboard(user) && navItem('dashboard', 'Dashboard')}
+          {canSeeDashboard(user) && navItem('calendar', 'Calendar')}
           {canSeeMyTasks(user) && navItem('my-tasks', 'My Tasks')}
 
           {tabs.length > 0 && <div className="nav-heading">Requests</div>}
@@ -240,6 +248,10 @@ export function App() {
 
         {view === 'dashboard' && canSeeDashboard(user) && (
           <Dashboard user={user} tickets={tickets} />
+        )}
+
+        {view === 'calendar' && canSeeDashboard(user) && (
+          <CalendarView user={user} tickets={tickets} onOpen={(t) => setSelectedId(t.id)} />
         )}
 
         {view === 'my-tasks' && canSeeMyTasks(user) && (

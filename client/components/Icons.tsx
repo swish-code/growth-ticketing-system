@@ -183,6 +183,20 @@ export const IconAlert = (p: IconProps) =>
     p,
   );
 
+export const IconCalendar = (p: IconProps) =>
+  svg(
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 9.5h18M8 3v4M16 3v4" />
+      <path d="M7.5 13.5h.01M12 13.5h.01M16.5 13.5h.01M7.5 17h.01M12 17h.01" />
+    </>,
+    p,
+  );
+
+export const IconChevronLeft = (p: IconProps) => svg(<path d="m14.5 5.5-6 6.5 6 6.5" />, p);
+
+export const IconChevronRight = (p: IconProps) => svg(<path d="m9.5 5.5 6 6.5-6 6.5" />, p);
+
 export const IconSun = (p: IconProps) =>
   svg(
     <>
@@ -208,6 +222,7 @@ export const IconMonitor = (p: IconProps) =>
 export const NAV_ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   dashboard: IconDashboard,
   'my-tasks': IconTasks,
+  calendar: IconCalendar,
   'crm-whatsapp': IconChat,
   'digital-ads': IconAds,
   influencer: IconInfluencer,
