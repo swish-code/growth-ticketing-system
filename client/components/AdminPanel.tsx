@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ADMIN_ROLE_ID,
   BRANDS,
+  STATUSES,
   TABS,
   emptyPermissions,
   fieldSetting,
+  processingTimeMs,
   tabName,
   type AreaFormSettings,
   type FormSettings,
@@ -15,7 +17,7 @@ import {
   type Ticket,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
-import { formatDateTime, statusClass } from '../lib/format';
+import { formatDateTime, formatDuration, statusClass } from '../lib/format';
 
 type Section = 'staff' | 'roles' | 'submissions' | 'forms' | 'workflow';
 
@@ -31,7 +33,7 @@ interface Props {
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'staff', label: 'Staff access' },
   { id: 'roles', label: 'Roles' },
-  { id: 'submissions', label: 'Submissions' },
+  { id: 'submissions', label: 'Submissions & Tracking' },
   { id: 'forms', label: 'Form builder' },
   { id: 'workflow', label: 'Workflow' },
 ];
@@ -499,22 +501,33 @@ function SubmissionsSection({
 }) {
   const [search, setSearch] = useState('');
   const [area, setArea] = useState('');
+  const [status, setStatus] = useState('');
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return tickets.filter((ticket) => {
       if (area && ticket.area !== area) return false;
-      if (term && !`${ticket.id} ${ticket.title} ${ticket.requesterEmail}`.toLowerCase().includes(term))
+      if (status && ticket.status !== status) return false;
+      if (
+        term &&
+        !`${ticket.id} ${ticket.title} ${ticket.requesterName} ${ticket.requesterEmail}`
+          .toLowerCase()
+          .includes(term)
+      )
         return false;
       return true;
     });
-  }, [tickets, search, area]);
+  }, [tickets, search, area, status]);
 
   return (
     <>
+      <p className="muted small">
+        Every request's employee, tab, requested date, creation and completion timestamps,
+        processing time and current status — for tracking and reporting.
+      </p>
       <div className="filters">
         <input
-          placeholder="Search by ID, title or requester"
+          placeholder="Search by ID, title or employee"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -526,6 +539,14 @@ function SubmissionsSection({
             </option>
           ))}
         </select>
+        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">All statuses</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="table-wrap">
@@ -533,32 +554,52 @@ function SubmissionsSection({
           <thead>
             <tr>
               <th>Request</th>
+              <th>Employee</th>
               <th>Tab</th>
-              <th>Brand</th>
-              <th>Submitted</th>
+              <th>Requested date</th>
+              <th>Created</th>
+              <th>Completed</th>
+              <th>Processing time</th>
               <th>Status</th>
-              <th>Assignee</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((ticket) => (
-              <tr key={ticket.id} className="clickable" onClick={() => onOpen(ticket)}>
-                <td>
-                  <div className="cell-id">{ticket.id}</div>
-                  <div className="muted small">{ticket.title}</div>
-                </td>
-                <td>{tabName(ticket.area)}</td>
-                <td>{ticket.brand}</td>
-                <td>{formatDateTime(ticket.createdAt)}</td>
-                <td>
-                  <span className={statusClass(ticket.status)}>{ticket.status}</span>
-                </td>
-                <td>{ticket.ownerEmail ?? '—'}</td>
-              </tr>
-            ))}
+            {filtered.map((ticket) => {
+              const processingMs = processingTimeMs(ticket);
+              return (
+                <tr key={ticket.id} className="clickable" onClick={() => onOpen(ticket)}>
+                  <td>
+                    <div className="cell-id">{ticket.id}</div>
+                    <div className="muted small">{ticket.title}</div>
+                  </td>
+                  <td>
+                    {ticket.requesterName}
+                    <div className="muted small">{ticket.requesterEmail}</div>
+                  </td>
+                  <td>{tabName(ticket.area)}</td>
+                  <td>{ticket.campaignDate}</td>
+                  <td>{formatDateTime(ticket.createdAt)}</td>
+                  <td>{ticket.completedAt ? formatDateTime(ticket.completedAt) : '—'}</td>
+                  <td>
+                    {processingMs !== null ? (
+                      formatDuration(processingMs)
+                    ) : ticket.status === 'Declined' ? (
+                      '—'
+                    ) : (
+                      <span className="muted small">
+                        {formatDuration(Date.now() - ticket.createdAt)} so far
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={statusClass(ticket.status)}>{ticket.status}</span>
+                  </td>
+                </tr>
+              );
+            })}
             {!filtered.length && (
               <tr>
-                <td colSpan={6} className="muted center">
+                <td colSpan={8} className="muted center">
                   No submissions found.
                 </td>
               </tr>

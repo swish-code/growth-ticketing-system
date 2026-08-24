@@ -3,6 +3,7 @@ import type {
   AuditEntry,
   FormSettings,
   FormValues,
+  RequestEligibility,
   Role,
   StaffMember,
   Ticket,
@@ -100,6 +101,11 @@ export const api = {
 
   deleteTicket: (id: string) =>
     request<{ ok: true }>(`/api/tickets?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  eligibility: (area: string) =>
+    request<{ eligibility: RequestEligibility }>(
+      `/api/tickets/eligibility?area=${encodeURIComponent(area)}`,
+    ),
 
   /* ------------------------------- admin ------------------------------- */
 

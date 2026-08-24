@@ -76,6 +76,20 @@ export async function listTickets(): Promise<Ticket[]> {
   return result.rows.map(mapTicket);
 }
 
+/**
+ * Most recent submission timestamp by this requester in this tab, regardless
+ * of that request's later status — the basis for the frequency cooldown
+ * (spec: request-frequency rule).
+ */
+export async function getLastRequestAt(email: string, area: string): Promise<number | null> {
+  const result = await query<{ last: string | null }>(
+    `SELECT MAX(created_at) AS last FROM tickets WHERE requester_email = $1 AND area = $2`,
+    [email, area],
+  );
+  const last = result.rows[0]?.last;
+  return last === null || last === undefined ? null : Number(last);
+}
+
 /* ------------------------------------------------------------------ */
 /* Audit & activity writers (spec §17, §18)                            */
 /* ------------------------------------------------------------------ */

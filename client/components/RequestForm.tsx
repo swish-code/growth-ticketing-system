@@ -1,34 +1,60 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   addDaysKey,
   fieldSetting,
   isFieldVisible,
+  primaryDateField,
   type FieldDef,
   type FormSettings,
   type FormValues,
+  type RequestEligibility,
   type TabDef,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
+import { EligibilityBanner } from './EligibilityBanner';
 import { IconAlert, IconClose } from './Icons';
 
 interface Props {
   user: AppUser;
   tab: TabDef;
   formSettings: FormSettings;
+  /** Pre-fills the tab's primary date field — set when opened from a calendar day. */
+  initialDate?: string;
   onClose: () => void;
   onCreated: () => void;
 }
 
-export function RequestForm({ user, tab, formSettings, onClose, onCreated }: Props) {
-  const [values, setValues] = useState<FormValues>({});
+export function RequestForm({ user, tab, formSettings, initialDate, onClose, onCreated }: Props) {
+  const dateField = useMemo(() => primaryDateField(tab), [tab]);
+  const [values, setValues] = useState<FormValues>(() =>
+    initialDate && dateField ? { [dateField.label]: initialDate } : {},
+  );
   const [customText, setCustomText] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [eligibility, setEligibility] = useState<RequestEligibility | null>(null);
 
   const fields = useMemo(
     () => tab.fields.filter((field) => fieldSetting(formSettings, tab.id, field).enabled),
     [tab, formSettings],
   );
+
+  // Request-frequency cooldown (spec: request frequency rules). Re-checked
+  // authoritatively by the server on submit — this is display only.
+  useEffect(() => {
+    let active = true;
+    api
+      .eligibility(tab.id)
+      .then((res) => {
+        if (active) setEligibility(res.eligibility);
+      })
+      .catch(() => {
+        if (active) setEligibility(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tab.id]);
 
   function setValue(label: string, value: unknown) {
     setValues((prev) => ({ ...prev, [label]: value }));
@@ -93,6 +119,11 @@ export function RequestForm({ user, tab, formSettings, onClose, onCreated }: Pro
       if (!empty) payload[field.label] = value;
     }
 
+    if (eligibility && !eligibility.eligible) {
+      setError("You can't submit yet — see the notice above.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await api.createTicket(tab.id, payload);
@@ -115,7 +146,10 @@ export function RequestForm({ user, tab, formSettings, onClose, onCreated }: Pro
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
         </header>
 
-        <form className="modal-body form-grid" onSubmit={handleSubmit}>
+        <div className="modal-body">
+          <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} />
+
+          <form className="form-grid" onSubmit={handleSubmit}>
           {fields.map((field) => {
             if (!isFieldVisible(tab, field, values)) return null;
             const setting = fieldSetting(formSettings, tab.id, field);
@@ -221,11 +255,21 @@ export function RequestForm({ user, tab, formSettings, onClose, onCreated }: Pro
             <button type="button" className="btn btn-ghost" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || (eligibility ? !eligibility.eligible : false)}
+              title={
+                eligibility && !eligibility.eligible
+                  ? 'You cannot submit until the waiting period has passed.'
+                  : undefined
+              }
+            >
               {submitting ? 'Submitting…' : 'Submit request'}
             </button>
           </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

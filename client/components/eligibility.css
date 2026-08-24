@@ -1,0 +1,104 @@
+/* Request-frequency eligibility + per-tab calendar day-creatability.
+   Written against the same shared token set as calendar.css so it works
+   with both the current design system and any future restyle. */
+
+.eligibility-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+.eligibility-line svg {
+  flex: 0 0 auto;
+  color: var(--good);
+}
+.eligibility-line.is-blocked {
+  color: var(--critical);
+}
+.eligibility-line.is-blocked svg {
+  color: var(--critical);
+}
+
+.eligibility-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0.75rem 0.9rem;
+  margin: 0 0 0.9rem;
+}
+.eligibility-card svg {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+.eligibility-card strong {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.15rem;
+}
+.eligibility-card p {
+  margin: 0;
+}
+.eligibility-card.is-ok {
+  background: var(--good-wash);
+  border-color: color-mix(in srgb, var(--good) 35%, transparent);
+}
+.eligibility-card.is-ok svg {
+  color: var(--good);
+}
+.eligibility-card.is-blocked {
+  background: var(--critical-wash);
+  border-color: color-mix(in srgb, var(--critical) 35%, transparent);
+  color: var(--critical);
+}
+.eligibility-card.is-blocked svg {
+  color: var(--critical);
+}
+.eligibility-card.is-blocked .small {
+  color: var(--critical);
+}
+
+.cal-date-note {
+  margin: 0.6rem 0;
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+
+/* per-tab calendar: day cells outside the allowed lead-time window */
+.cal-day.is-locked {
+  background: var(--surface-2);
+}
+.cal-day.is-locked .cal-day-num {
+  opacity: 0.4;
+}
+
+.cal-day-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cal-day-detail-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.cal-day-detail-status.ok {
+  color: var(--good);
+}
+.cal-day-detail-status.blocked {
+  color: var(--critical);
+}
+.cal-day-detail-reasons {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}

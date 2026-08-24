@@ -3,8 +3,10 @@ import {
   MENU_ISSUES,
   canManage,
   canUseBrand,
+  computeEligibility,
   deriveCampaignDate,
   deriveTitle,
+  formatDateTimeIso,
   getTab,
   hasFormAccess,
   hasSubmissionAccess,
@@ -21,6 +23,7 @@ import {
   TICKET_COLUMNS,
   canMarkDone,
   canSchedule,
+  getLastRequestAt,
   getTicket,
   listAudit,
   listTickets,
@@ -45,6 +48,22 @@ function canReadTicket(viewer: Viewer, ticket: Ticket): boolean {
   if (tabAccess(viewer, ticket.area) === 'none') return false;
   return canUseBrand(viewer, ticket.brand);
 }
+
+/* ------------------------------------------------------------------ */
+/* GET — request-frequency eligibility                                 */
+/* ------------------------------------------------------------------ */
+
+ticketsRouter.get('/eligibility', async (req: Request, res: Response) => {
+  const viewer = await resolveViewer(req);
+  if (!viewer) return res.status(401).json({ error: 'Not signed in.' });
+
+  const area = String(req.query.area ?? '');
+  if (!getTab(area)) return res.status(400).json({ error: 'Unknown request tab.' });
+
+  const lastRequestAt = await getLastRequestAt(viewer.email, area);
+  const eligibility = computeEligibility(area, lastRequestAt, Date.now(), viewer.isAdmin);
+  return res.json({ eligibility });
+});
 
 /* ------------------------------------------------------------------ */
 /* GET — ticket list / audit history                                   */
@@ -104,6 +123,22 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   }
   if (tabAccess(viewer, area) === 'none') {
     return res.status(403).json({ error: 'Your role does not have access to this tab.' });
+  }
+
+  // Request-frequency cooldown: cannot be bypassed from the frontend — this is
+  // the authoritative check regardless of what GET /eligibility last reported.
+  if (!viewer.isAdmin) {
+    const lastRequestAt = await getLastRequestAt(viewer.email, area);
+    const eligibility = computeEligibility(area, lastRequestAt, Date.now(), false);
+    if (!eligibility.eligible && eligibility.nextEligibleAt && eligibility.lastRequestAt) {
+      return res.status(429).json({
+        error:
+          `You can submit your next ${tab.name} request on ` +
+          `${formatDateTimeIso(eligibility.nextEligibleAt)}. Your previous request was on ` +
+          `${formatDateTimeIso(eligibility.lastRequestAt)} (${eligibility.cooldownDays}-day waiting period).`,
+        eligibility,
+      });
+    }
   }
 
   const settings = await loadFormSettings();

@@ -41,7 +41,7 @@ export function App() {
   const [formSettings, setFormSettings] = useState<FormSettings>({});
   const [view, setView] = useState('dashboard');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [formArea, setFormArea] = useState<string | null>(null);
+  const [formRequest, setFormRequest] = useState<{ area: string; date?: string } | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [toasts, setToasts] = useState<ActivityEvent[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -264,7 +264,7 @@ export function App() {
             tab={activeTab}
             tickets={tickets}
             onOpen={(t) => setSelectedId(t.id)}
-            onNew={() => setFormArea(activeTab.id)}
+            onNew={(date) => setFormRequest({ area: activeTab.id, date })}
           />
         )}
 
@@ -281,19 +281,24 @@ export function App() {
       </div>
 
       {canCreateHere && (
-        <button className="fab" onClick={() => setFormArea(activeTab!.id)} aria-label="New request">
+        <button
+          className="fab"
+          onClick={() => setFormRequest({ area: activeTab!.id })}
+          aria-label="New request"
+        >
           <IconPlus size={24} />
         </button>
       )}
 
-      {formArea && getTab(formArea) && (
+      {formRequest && getTab(formRequest.area) && (
         <RequestForm
           user={user}
-          tab={getTab(formArea)!}
+          tab={getTab(formRequest.area)!}
           formSettings={formSettings}
-          onClose={() => setFormArea(null)}
+          initialDate={formRequest.date}
+          onClose={() => setFormRequest(null)}
           onCreated={() => {
-            setFormArea(null);
+            setFormRequest(null);
             void refresh();
           }}
         />

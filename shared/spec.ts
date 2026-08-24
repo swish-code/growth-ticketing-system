@@ -491,7 +491,25 @@ const TITLE_ORDER = [
   'Campaign',
 ];
 
-const CAMPAIGN_DATE_ORDER = ['Campaign Date', 'Effective date', 'Start Date'];
+export const CAMPAIGN_DATE_ORDER = ['Campaign Date', 'Effective date', 'Start Date'];
+
+/**
+ * The date field a tab's calendar and "create for this day" actions target.
+ * Menu Issues has none — it has no forward-looking date field at all.
+ */
+export function primaryDateField(tab: TabDef): FieldDef | undefined {
+  for (const key of CAMPAIGN_DATE_ORDER) {
+    const field = tab.fields.find((f) => f.label === key);
+    if (field) return field;
+  }
+  return undefined;
+}
+
+/** Earliest day that can be targeted by the tab's primary date field. Admins bypass it (spec §6.3). */
+export function minLeadDaysFor(tab: TabDef, isAdmin: boolean): number {
+  if (isAdmin) return 0;
+  return primaryDateField(tab)?.minDaysFromToday ?? 0;
+}
 
 function firstFilled(values: FormValues, keys: string[]): string | null {
   for (const key of keys) {
@@ -543,6 +561,68 @@ export const PRIORITY_TARGET_MS: Record<string, number> = {
 export function priorityTargetMs(priority: string | undefined): number | null {
   if (!priority) return null;
   return PRIORITY_TARGET_MS[priority] ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Request frequency / cooldown                                        */
+/*                                                                      */
+/* Each employee may only submit a new request in a given tab after a  */
+/* waiting period from their previous request IN THAT SAME TAB (not a  */
+/* department-wide cooldown) — CRM WhatsApp and Digital Ads: 3 days;   */
+/* every other tab: 5 days. "Previous request" counts any submission   */
+/* regardless of its later status (Declined included), measured from   */
+/* submission time. Administrators bypass this, consistent with every  */
+/* other date restriction in the system.                                */
+/* ------------------------------------------------------------------ */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const COOLDOWN_DAYS_BY_AREA: Record<string, number> = {
+  'crm-whatsapp': 3,
+  'digital-ads': 3,
+  influencer: 5,
+  'menu-updates': 5,
+  'menu-issues': 5,
+  'external-activities': 5,
+};
+
+export function cooldownDaysFor(area: string): number {
+  return COOLDOWN_DAYS_BY_AREA[area] ?? 5;
+}
+
+export interface RequestEligibility {
+  area: string;
+  cooldownDays: number;
+  /** Epoch ms of the requester's previous submission in this tab, or null if none. */
+  lastRequestAt: number | null;
+  /** Epoch ms the requester becomes eligible again, or null if eligible now. */
+  nextEligibleAt: number | null;
+  eligible: boolean;
+}
+
+export function computeEligibility(
+  area: string,
+  lastRequestAt: number | null,
+  now = Date.now(),
+  bypass = false,
+): RequestEligibility {
+  const cooldownDays = cooldownDaysFor(area);
+  if (lastRequestAt === null) {
+    return { area, cooldownDays, lastRequestAt: null, nextEligibleAt: null, eligible: true };
+  }
+  const nextEligibleAt = lastRequestAt + cooldownDays * DAY_MS;
+  const eligible = bypass || now >= nextEligibleAt;
+  return { area, cooldownDays, lastRequestAt, nextEligibleAt: eligible ? null : nextEligibleAt, eligible };
+}
+
+/* ------------------------------------------------------------------ */
+/* Processing time (spec-requested: created → completed timestamp)     */
+/* ------------------------------------------------------------------ */
+
+export function processingTimeMs(
+  ticket: Pick<Ticket, 'createdAt' | 'completedAt'>,
+): number | null {
+  return ticket.completedAt ? ticket.completedAt - ticket.createdAt : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -731,4 +811,15 @@ export function addDaysKey(days: number, now = Date.now()): string {
 /** Campaign date has arrived when it is on or before today. */
 export function dateReached(campaignDate: string, now = Date.now()): boolean {
   return campaignDate <= todayKey(now);
+}
+
+/** "2026-08-23 10:35" — locale-independent, used in server error messages. */
+export function formatDateTimeIso(ms: number): string {
+  const d = new Date(ms);
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${mo}-${da} ${h}:${mi}`;
 }

@@ -5,6 +5,7 @@ import {
   dateReached,
   getTab,
   hasSubmissionAccess,
+  processingTimeMs,
   tabName,
   type AuditEntry,
   type Ticket,
@@ -38,6 +39,7 @@ export function RequestDetail({ user, ticket, onClose, onChanged }: Props) {
 
   const tab = getTab(ticket.area);
   const sla = menuIssueSla(ticket);
+  const processingMs = processingTimeMs(ticket);
 
   useEffect(() => {
     let active = true;
@@ -160,6 +162,19 @@ export function RequestDetail({ user, ticket, onClose, onChanged }: Props) {
                 <strong>{formatDateKey(ticket.campaignDate)}</strong>
               </div>
             )}
+            <div>
+              <span className="label">Completed</span>
+              <strong>{ticket.completedAt ? formatDateTime(ticket.completedAt) : '—'}</strong>
+            </div>
+            <div>
+              <span className="label">Processing time</span>
+              <strong>{processingMs !== null ? formatDuration(processingMs) : '—'}</strong>
+              {processingMs === null && ticket.status !== 'Declined' && (
+                <span className="muted small">
+                  {formatDuration(Date.now() - ticket.createdAt)} elapsed so far
+                </span>
+              )}
+            </div>
           </div>
 
           {ticket.status === 'Declined' && ticket.declineReason && (

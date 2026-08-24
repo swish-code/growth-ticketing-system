@@ -1,14 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   MENU_ISSUES,
   STATUSES,
   hasFormAccess,
   hasSubmissionAccess,
   toDateKey,
+  type RequestEligibility,
   type TabDef,
   type Ticket,
 } from '../../shared/spec';
-import type { AppUser } from '../api';
+import { api, type AppUser } from '../api';
 import {
   displayValue,
   exportCsv,
@@ -19,30 +20,53 @@ import {
   priorityClass,
   statusClass,
 } from '../lib/format';
-import { IconDownload, IconPlus } from './Icons';
+import { EligibilityBanner } from './EligibilityBanner';
+import { IconCalendar, IconDownload, IconPlus, IconTasks } from './Icons';
+import { TabCalendar } from './TabCalendar';
 
 interface Props {
   user: AppUser;
   tab: TabDef;
   tickets: Ticket[];
   onOpen: (ticket: Ticket) => void;
-  onNew: () => void;
+  onNew: (date?: string) => void;
 }
 
 const EMPTY = '';
 
+type SubView = 'list' | 'calendar';
+
 export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
+  const [subView, setSubView] = useState<SubView>('list');
   const [search, setSearch] = useState(EMPTY);
   const [status, setStatus] = useState(EMPTY);
   const [brand, setBrand] = useState(EMPTY);
   const [from, setFrom] = useState(EMPTY);
   const [to, setTo] = useState(EMPTY);
   const [aggregator, setAggregator] = useState(EMPTY);
+  const [eligibility, setEligibility] = useState<RequestEligibility | null>(null);
 
   const aggregatorField = tab.fields.find((f) => f.label === 'Aggregator');
   const isMenuIssues = tab.id === MENU_ISSUES;
   const canSubmit = hasFormAccess(user);
   const canRead = hasSubmissionAccess(user);
+
+  // Request-frequency cooldown for this tab (spec: request frequency rules).
+  useEffect(() => {
+    if (!canSubmit) return;
+    let active = true;
+    api
+      .eligibility(tab.id)
+      .then((res) => {
+        if (active) setEligibility(res.eligibility);
+      })
+      .catch(() => {
+        if (active) setEligibility(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tab.id, canSubmit, tickets]);
 
   const areaTickets = useMemo(
     () => tickets.filter((t) => t.area === tab.id),
@@ -81,7 +105,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
         <header className="page-head">
           <h1>{tab.name}</h1>
           {canSubmit && (
-            <button className="btn btn-primary btn-new-request" onClick={onNew}>
+            <button className="btn btn-primary btn-new-request" onClick={() => onNew()}>
               <IconPlus size={17} />
               New request
             </button>
@@ -91,6 +115,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
           Your role has form access only. You can submit {tab.name} requests, but existing
           submissions are not visible to you.
         </div>
+        {canSubmit && <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} compact />}
       </section>
     );
   }
@@ -106,6 +131,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
               <> · average response {formatDuration(averageResponse)}</>
             )}
           </p>
+          {canSubmit && <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} compact />}
         </div>
         <div className="head-actions">
           <button className="btn btn-ghost" onClick={() => exportCsv(tab, filtered)}>
@@ -113,7 +139,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
             Export CSV
           </button>
           {canSubmit && (
-            <button className="btn btn-primary btn-new-request" onClick={onNew}>
+            <button className="btn btn-primary btn-new-request" onClick={() => onNew()}>
               <IconPlus size={17} />
               New request
             </button>
@@ -121,6 +147,32 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
         </div>
       </header>
 
+      <nav className="subnav">
+        <button
+          className={`subnav-item ${subView === 'list' ? 'active' : ''}`}
+          onClick={() => setSubView('list')}
+        >
+          <IconTasks size={15} /> List
+        </button>
+        <button
+          className={`subnav-item ${subView === 'calendar' ? 'active' : ''}`}
+          onClick={() => setSubView('calendar')}
+        >
+          <IconCalendar size={15} /> Calendar
+        </button>
+      </nav>
+
+      {subView === 'calendar' ? (
+        <TabCalendar
+          user={user}
+          tab={tab}
+          tickets={tickets}
+          eligibility={eligibility}
+          onOpen={onOpen}
+          onCreateForDate={(date) => onNew(date)}
+        />
+      ) : (
+        <>
       <div className="filters">
         <input
           placeholder="Search by title or ID"
@@ -224,6 +276,8 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </section>
   );
 }
