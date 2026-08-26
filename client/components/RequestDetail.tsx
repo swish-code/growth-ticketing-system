@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   MENU_ISSUES,
   canManage,
+  canMarkDone,
   dateReached,
   getTab,
   hasSubmissionAccess,
@@ -62,8 +63,9 @@ export function RequestDetail({ user, ticket, onClose, onChanged }: Props) {
   const canAct = manages && !lockedByOther;
 
   const campaignDateReached = dateReached(ticket.campaignDate);
-  const doneAvailable =
-    ticket.area === MENU_ISSUES || user.isAdmin || campaignDateReached;
+  // No admin bypass: Done is unreachable before the campaign date for
+  // everyone, Menu Issues excepted (spec §15.5) — matches server enforcement.
+  const doneAvailable = canMarkDone(ticket);
 
   async function run(op: 'accept' | 'decline' | 'schedule' | 'done' | 'notes') {
     setError('');

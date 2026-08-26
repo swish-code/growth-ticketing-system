@@ -307,7 +307,7 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
     if (ticket.status === 'Declined') {
       return res.status(409).json({ error: 'A declined request cannot be completed.' });
     }
-    if (!canMarkDone(ticket, viewer.isAdmin, now)) {
+    if (!canMarkDone(ticket, now)) {
       return res.status(400).json({
         error: `Done is available from ${ticket.campaignDate}. Use Schedule until then.`,
       });

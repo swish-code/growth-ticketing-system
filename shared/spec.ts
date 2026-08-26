@@ -813,6 +813,27 @@ export function dateReached(campaignDate: string, now = Date.now()): boolean {
   return campaignDate <= todayKey(now);
 }
 
+/* ------------------------------------------------------------------ */
+/* Done / Schedule guards (spec §15.5, §15.6)                          */
+/*                                                                      */
+/* Shared by client and server so they can never disagree about when   */
+/* Done becomes available — a ticket CANNOT be marked Done before its  */
+/* campaign date, for anyone, administrators included. Only Menu       */
+/* Issues (which has no campaign date at all) is exempt. Before the    */
+/* date, the only closing action available is Scheduled.               */
+/* ------------------------------------------------------------------ */
+
+export function canMarkDone(ticket: Pick<Ticket, 'area' | 'campaignDate'>, now = Date.now()): boolean {
+  if (ticket.area === MENU_ISSUES) return true;
+  return dateReached(ticket.campaignDate, now);
+}
+
+/** Scheduled applies only to non-Menu-Issue requests before the campaign date. */
+export function canSchedule(ticket: Pick<Ticket, 'area' | 'campaignDate'>, now = Date.now()): boolean {
+  if (ticket.area === MENU_ISSUES) return false;
+  return !dateReached(ticket.campaignDate, now);
+}
+
 /** "2026-08-23 10:35" — locale-independent, used in server error messages. */
 export function formatDateTimeIso(ms: number): string {
   const d = new Date(ms);

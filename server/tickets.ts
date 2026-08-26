@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import {
   ACCEPTANCE_SLA_MS,
   MENU_ISSUES,
-  dateReached,
   tabName,
   todayKey,
   type ActivityEvent,
@@ -284,22 +283,7 @@ async function raiseEscalation(
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Workflow guards (spec §15)                                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * Done is only reachable on or after the campaign date, except for Menu Issues
- * and except for administrators (spec §15.5).
- */
-export function canMarkDone(ticket: Ticket, isAdmin: boolean, now = Date.now()): boolean {
-  if (ticket.area === MENU_ISSUES) return true;
-  if (isAdmin) return true;
-  return dateReached(ticket.campaignDate, now);
-}
-
-/** Scheduled applies only to non-Menu-Issue requests before the campaign date. */
-export function canSchedule(ticket: Ticket, now = Date.now()): boolean {
-  if (ticket.area === MENU_ISSUES) return false;
-  return !dateReached(ticket.campaignDate, now);
-}
+// canMarkDone / canSchedule live in shared/spec.ts — the client needs the
+// exact same rule (no admin bypass on Done), not a server-only copy that can
+// drift from what the UI shows.
+export { canMarkDone, canSchedule } from '../shared/spec';
