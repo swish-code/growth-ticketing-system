@@ -117,6 +117,19 @@
   white-space: nowrap;
 }
 
+/* Tab prefix shown on chips only when requests from every tab are mixed
+   together (no tab filter selected) — same CW/DA/MI codes as request IDs. */
+.cal-chip-tab {
+  flex: 0 0 auto;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+}
+.cal-chip:hover .cal-chip-tab {
+  color: var(--ink-2);
+}
+
 .chip-status-new {
   --chip: var(--accent);
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   STATUSES,
+  getTab,
   tabName,
   toDateKey,
   todayKey,
@@ -202,10 +203,15 @@ export function CalendarView({ user, tickets, onOpen }: Props) {
                       key={ticket.id}
                       type="button"
                       className={`cal-chip ${STATUS_CHIP[ticket.status] ?? ''}`}
-                      title={`${ticket.id} · ${ticket.title} · ${ticket.status}`}
+                      title={`${ticket.id} · ${tabName(ticket.area)} · ${ticket.title} · ${ticket.status}`}
                       onClick={() => onOpen(ticket)}
                     >
                       <i />
+                      {/* Only needed with every tab mixed together — a single-tab
+                          filter already makes the tab obvious. */}
+                      {!area && (
+                        <span className="cal-chip-tab">{getTab(ticket.area)?.prefix ?? ''}</span>
+                      )}
                       <span>{ticket.title || ticket.id}</span>
                     </button>
                   ))}
