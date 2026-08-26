@@ -1,5 +1,5 @@
 import {
-  addDaysKey,
+  earliestDateFor,
   fieldSetting,
   isFieldVisible,
   type FieldDef,
@@ -10,13 +10,14 @@ import {
 
 /**
  * Server-side re-validation of a submitted form. The browser enforces the same
- * rules, but spec §23 requires the backend to repeat every check.
+ * rules, but spec §23 requires the backend to repeat every check. The minimum
+ * campaign-date lead time applies to every requester, administrators included
+ * — there is no bypass on either side.
  */
 export function validateSubmission(
   tab: TabDef,
   raw: FormValues,
   settings: FormSettings,
-  isAdmin: boolean,
   now = Date.now(),
 ): { values: FormValues } | { error: string } {
   const values: FormValues = {};
@@ -67,12 +68,9 @@ export function validateSubmission(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return { error: `${field.label} must be a valid date.` };
       }
-      // Administrators bypass minimum-date restrictions (spec §6.3).
-      if (!isAdmin && field.minDaysFromToday !== undefined) {
-        const earliest = addDaysKey(field.minDaysFromToday, now);
-        if (date < earliest) {
-          return { error: `${field.label} must be ${earliest} or later.` };
-        }
+      const earliest = earliestDateFor(field, now);
+      if (earliest && date < earliest) {
+        return { error: `${field.label} must be ${earliest} or later.` };
       }
       if (field.mustBeAfter) {
         const other = values[field.mustBeAfter];

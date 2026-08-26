@@ -136,7 +136,9 @@ Backend routes repeat every check — hiding UI is never treated as security.
 | External Activities | `EA` | Start date ≥ today + 7 days; end date after start |
 
 IDs are six digits behind the prefix (`CW-000001`) and come from an atomic per-tab counter.
-Administrators bypass every minimum-date restriction.
+The minimum campaign-date lead time applies to every requester — administrators included, no
+bypass — and each tab also has a per-employee submission cooldown (3 days for CRM WhatsApp and
+Digital Ads, 5 for every other tab; admins do bypass this one).
 
 ---
 

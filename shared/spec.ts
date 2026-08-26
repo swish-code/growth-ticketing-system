@@ -45,7 +45,7 @@ export interface FieldDef {
   type: FieldType;
   required: boolean;
   options?: string[];
-  /** Minimum selectable date = today + N days. Admins bypass it. */
+  /** Minimum selectable date = today + N days. Applies to everyone, no admin bypass. */
   minDaysFromToday?: number;
   /** This date field must be strictly after the referenced date field. */
   mustBeAfter?: string;
@@ -505,10 +505,22 @@ export function primaryDateField(tab: TabDef): FieldDef | undefined {
   return undefined;
 }
 
-/** Earliest day that can be targeted by the tab's primary date field. Admins bypass it (spec §6.3). */
-export function minLeadDaysFor(tab: TabDef, isAdmin: boolean): number {
-  if (isAdmin) return 0;
+/**
+ * Earliest day that can be targeted by the tab's primary date field. No
+ * admin bypass — the minimum lead time applies to everyone, shared by the
+ * calendar's day-locking, the request form's date picker, and server-side
+ * validation so the three can't drift apart.
+ */
+export function minLeadDaysFor(tab: TabDef): number {
   return primaryDateField(tab)?.minDaysFromToday ?? 0;
+}
+
+/** Earliest selectable date (YYYY-MM-DD) for a field with a minDaysFromToday rule. */
+export function earliestDateFor(
+  field: Pick<FieldDef, 'minDaysFromToday'>,
+  now = Date.now(),
+): string | undefined {
+  return field.minDaysFromToday === undefined ? undefined : addDaysKey(field.minDaysFromToday, now);
 }
 
 function firstFilled(values: FormValues, keys: string[]): string | null {
@@ -571,8 +583,9 @@ export function priorityTargetMs(priority: string | undefined): number | null {
 /* department-wide cooldown) — CRM WhatsApp and Digital Ads: 3 days;   */
 /* every other tab: 5 days. "Previous request" counts any submission   */
 /* regardless of its later status (Declined included), measured from   */
-/* submission time. Administrators bypass this, consistent with every  */
-/* other date restriction in the system.                                */
+/* submission time. Administrators bypass this cooldown — unlike the    */
+/* campaign-date minimum lead time and the Done rule, neither of which  */
+/* has an admin bypass.                                                 */
 /* ------------------------------------------------------------------ */
 
 const DAY_MS = 24 * 60 * 60 * 1000;

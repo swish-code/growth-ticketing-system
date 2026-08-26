@@ -82,7 +82,7 @@ export function TabCalendar({ user, tab, tickets, eligibility, onOpen, onCreateF
   const hasDateField = Boolean(primaryDateField(tab));
   // Menu Issues has no forward-looking date field, so "create for this day"
   // only makes sense for today — every other tab follows its own lead time.
-  const earliestKey = hasDateField ? addDaysKey(minLeadDaysFor(tab, user.isAdmin)) : today;
+  const earliestKey = hasDateField ? addDaysKey(minLeadDaysFor(tab)) : today;
 
   function dateEligible(dayKey: string): boolean {
     return hasDateField ? dayKey >= earliestKey : dayKey === today;

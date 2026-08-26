@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  addDaysKey,
+  earliestDateFor,
   fieldSetting,
   isFieldVisible,
   primaryDateField,
@@ -68,7 +68,7 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
     setValue(field.label, next);
   }
 
-  /** Minimum selectable date. Administrators bypass it (spec §6.3). */
+  /** Minimum selectable date — applies to everyone, no admin bypass. */
   function minDateFor(field: FieldDef): string | undefined {
     if (field.mustBeAfter) {
       const start = values[field.mustBeAfter];
@@ -78,8 +78,7 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
         return next.toISOString().slice(0, 10);
       }
     }
-    if (user.isAdmin || field.minDaysFromToday === undefined) return undefined;
-    return addDaysKey(field.minDaysFromToday);
+    return earliestDateFor(field);
   }
 
   async function handleSubmit(event: React.FormEvent) {

@@ -142,7 +142,7 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   }
 
   const settings = await loadFormSettings();
-  const result = validateSubmission(tab, req.body?.data ?? {}, settings, viewer.isAdmin);
+  const result = validateSubmission(tab, req.body?.data ?? {}, settings);
   if ('error' in result) return res.status(400).json({ error: result.error });
 
   const values = result.values;
