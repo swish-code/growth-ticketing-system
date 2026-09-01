@@ -183,6 +183,15 @@ export const IconAlert = (p: IconProps) =>
     p,
   );
 
+export const IconBell = (p: IconProps) =>
+  svg(
+    <>
+      <path d="M6 9.5a6 6 0 0 1 12 0c0 4.2 1.3 5.8 2 6.5H4c.7-.7 2-2.3 2-6.5Z" />
+      <path d="M10 19.5a2.2 2.2 0 0 0 4 0" />
+    </>,
+    p,
+  );
+
 export const IconCalendar = (p: IconProps) =>
   svg(
     <>

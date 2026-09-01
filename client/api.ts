@@ -1,8 +1,8 @@
 import type {
-  ActivityEvent,
   AuditEntry,
   FormSettings,
   FormValues,
+  Notification,
   RequestEligibility,
   Role,
   StaffMember,
@@ -135,8 +135,17 @@ export const api = {
   saveFormSettings: (area: string, settings: FormSettings[string]) =>
     post<{ ok: true; settings: FormSettings }>('/api/forms', { area, settings }),
 
-  /* ------------------------------ events ------------------------------- */
+  /* --------------------------- notifications ---------------------------- */
 
-  events: (since: number) =>
-    request<{ events: ActivityEvent[]; now: number }>(`/api/events?since=${since}`),
+  notifications: () =>
+    request<{ notifications: Notification[]; unread: number }>('/api/notifications'),
+
+  notificationsSince: (since: number) =>
+    request<{ notifications: Notification[]; now: number }>(`/api/notifications?since=${since}`),
+
+  markNotificationRead: (id: string) =>
+    post<{ ok: true }>('/api/notifications', { action: 'markRead', id }),
+
+  markAllNotificationsRead: () =>
+    post<{ ok: true }>('/api/notifications', { action: 'markAllRead' }),
 };

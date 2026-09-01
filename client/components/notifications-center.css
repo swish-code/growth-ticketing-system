@@ -1,0 +1,155 @@
+/* Notification Center — bell button + dropdown panel.
+   Written against tokens shared by both the current design system and the
+   pending Aurora restyle (--surface*, --ink*, --line*, --accent*, status
+   colors, radii, shadows), so it ships independently of that decision. */
+
+.notif-center {
+  position: relative;
+}
+
+.notif-bell {
+  position: relative;
+}
+
+.notif-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--critical);
+  color: #fff;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(380px, calc(100vw - 2rem));
+  max-height: min(520px, 70vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  z-index: 90;
+}
+
+.notif-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.8rem 0.95rem;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.notif-panel-head h2 {
+  font-size: 0.95rem;
+}
+
+.notif-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.notif-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 0.75rem 0.95rem;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  transition: background-color 0.12s ease;
+}
+.notif-row:last-child {
+  border-bottom: none;
+}
+.notif-row:hover {
+  background: var(--surface-2);
+}
+.notif-row.is-unread {
+  background: var(--accent-wash);
+}
+.notif-row.is-unread:hover {
+  background: var(--surface-3);
+}
+
+.notif-row-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--good-wash);
+  color: var(--good);
+  margin-top: 0.1rem;
+}
+.notif-row-icon.is-alert {
+  background: var(--critical-wash);
+  color: var(--critical);
+}
+
+.notif-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+.notif-row-body strong {
+  font-size: 0.86rem;
+  font-weight: 620;
+}
+.notif-row-message {
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notif-row-time {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.notif-row-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .notif-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-height: 75vh;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+}

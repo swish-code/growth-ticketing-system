@@ -4,13 +4,13 @@ import {
   MENU_ISSUES,
   tabName,
   todayKey,
-  type ActivityEvent,
   type AuditEntry,
   type Ticket,
   type TicketStatus,
 } from '../shared/spec';
 import { query } from './db';
 import { notifyTicketEvent } from './mailer';
+import { fanOutNotification } from './notifications';
 
 /* ------------------------------------------------------------------ */
 /* Row mapping                                                         */
@@ -168,31 +168,6 @@ export async function listAudit(ticketId: string): Promise<AuditEntry[]> {
   }));
 }
 
-export async function listEventsSince(since: number, limit = 20): Promise<ActivityEvent[]> {
-  const result = await query<{
-    id: string;
-    type: string;
-    title: string;
-    message: string;
-    ticket_id: string | null;
-    area: string | null;
-    created_at: string;
-  }>(
-    `SELECT id, type, title, message, ticket_id, area, created_at
-     FROM activity_events WHERE created_at > $1 ORDER BY created_at ASC LIMIT $2`,
-    [since, limit],
-  );
-  return result.rows.map((row) => ({
-    id: row.id,
-    type: row.type,
-    title: row.title,
-    message: row.message,
-    ticketId: row.ticket_id,
-    area: row.area,
-    createdAt: Number(row.created_at),
-  }));
-}
-
 /* ------------------------------------------------------------------ */
 /* Scheduled → Done + SLA escalation (spec §15.6, §16)                 */
 /* ------------------------------------------------------------------ */
@@ -232,11 +207,9 @@ export async function processDueAndEscalations(): Promise<void> {
       row.area,
       `auto-done-event-${row.id}`,
     );
-    notifyTicketEvent(
-      'done',
-      { ...mapTicket(row), status: 'Done', completedAt: now },
-      SYSTEM_ACTOR,
-    );
+    const autoDoneTicket = { ...mapTicket(row), status: 'Done' as const, completedAt: now };
+    notifyTicketEvent('done', autoDoneTicket, SYSTEM_ACTOR);
+    await fanOutNotification('done', autoDoneTicket, SYSTEM_ACTOR, undefined, `auto-done-notif-${row.id}`);
   }
 
   // 2. Acceptance SLA — still New more than 24h after submission (spec §16.1).
@@ -280,6 +253,13 @@ async function raiseEscalation(
     row.id,
     row.area,
     `${stableId}-event`,
+  );
+  await fanOutNotification(
+    kind === 'acceptance' ? 'sla.acceptance' : 'sla.completion',
+    mapTicket(row),
+    SYSTEM_ACTOR,
+    reason,
+    `${stableId}-notif`,
   );
 }
 

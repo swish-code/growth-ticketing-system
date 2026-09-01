@@ -131,12 +131,29 @@ export async function initSchema(): Promise<void> {
       created_at  BIGINT NOT NULL
     );
 
+    -- Notification Center: one row per (event, recipient), so each employee
+    -- sees only what's relevant to them and it survives being logged out —
+    -- unlike the old global, in-memory-only toast feed it replaces.
+    CREATE TABLE IF NOT EXISTS notifications (
+      id              TEXT PRIMARY KEY,
+      recipient_email TEXT NOT NULL,
+      type            TEXT NOT NULL,
+      title           TEXT NOT NULL,
+      message         TEXT NOT NULL DEFAULT '',
+      ticket_id       TEXT,
+      area            TEXT,
+      read_at         BIGINT,
+      created_at      BIGINT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS tickets_area_idx    ON tickets (area);
     CREATE INDEX IF NOT EXISTS tickets_brand_idx   ON tickets (brand);
     CREATE INDEX IF NOT EXISTS tickets_status_idx  ON tickets (status);
     CREATE INDEX IF NOT EXISTS audit_ticket_idx    ON ticket_audit (ticket_id);
     CREATE INDEX IF NOT EXISTS events_created_idx  ON activity_events (created_at);
     CREATE INDEX IF NOT EXISTS sessions_email_idx  ON sessions (email);
+    CREATE INDEX IF NOT EXISTS notif_recipient_idx ON notifications (recipient_email, created_at DESC);
+    CREATE INDEX IF NOT EXISTS notif_unread_idx    ON notifications (recipient_email, read_at);
   `);
 
   const now = Date.now();

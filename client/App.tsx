@@ -5,8 +5,8 @@ import {
   getTab,
   hasFormAccess,
   visibleTabs,
-  type ActivityEvent,
   type FormSettings,
+  type Notification,
   type Ticket,
 } from '../shared/spec';
 import { api, type AppUser } from './api';
@@ -17,6 +17,7 @@ import { CalendarView } from './components/CalendarView';
 import { Dashboard } from './components/Dashboard';
 import { NAV_ICONS, IconBars, IconLogout, IconPlus } from './components/Icons';
 import { MyTasks } from './components/MyTasks';
+import { NotificationCenter } from './components/NotificationCenter';
 import { Notifications } from './components/Notifications';
 import { RequestDetail } from './components/RequestDetail';
 import { RequestForm } from './components/RequestForm';
@@ -25,7 +26,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { THEME_STORAGE_KEY } from './lib/theme';
 
 const TICKET_POLL_MS = 60_000;
-const EVENT_POLL_MS = 8_000;
+const NOTIFICATION_POLL_MS = 8_000;
 const TOAST_TTL_MS = 5_000;
 
 function initials(name: string): string {
@@ -43,11 +44,16 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formRequest, setFormRequest] = useState<{ area: string; date?: string } | null>(null);
   const [showAccount, setShowAccount] = useState(false);
-  const [toasts, setToasts] = useState<ActivityEvent[]>([]);
+  const [toasts, setToasts] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifLoading, setNotifLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const lastEventTs = useRef(0);
+  // Cursor for the toast poll only — the Notification Center itself always
+  // loads the full persisted history, so nothing is lost across a reload.
+  const toastCursor = useRef(0);
 
   /* ------------------------------- boot -------------------------------- */
 
@@ -69,15 +75,30 @@ export function App() {
     }
   }, [user]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    setNotifLoading(true);
+    try {
+      const res = await api.notifications();
+      setNotifications(res.notifications);
+      setUnreadCount(res.unread);
+    } catch {
+      /* keep whatever was already loaded */
+    } finally {
+      setNotifLoading(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
-    lastEventTs.current = Date.now();
+    toastCursor.current = Date.now();
     void refresh();
+    void loadNotifications();
     api
       .formSettings()
       .then((res) => setFormSettings(res.settings))
       .catch(() => setFormSettings({}));
-  }, [user, refresh]);
+  }, [user, refresh, loadNotifications]);
 
   /* ------------------------- polling (spec §3.1) ------------------------ */
 
@@ -87,19 +108,23 @@ export function App() {
     return () => clearInterval(timer);
   }, [user, refresh]);
 
+  // Drives both the transient toasts and the Notification Center's live
+  // badge/list — a fresh notification lands in both at once.
   useEffect(() => {
     if (!user) return;
     const timer = setInterval(async () => {
       try {
-        const res = await api.events(lastEventTs.current);
-        if (res.events.length) {
-          lastEventTs.current = res.events[res.events.length - 1].createdAt;
-          setToasts((prev) => [...prev, ...res.events]);
+        const res = await api.notificationsSince(toastCursor.current);
+        if (res.notifications.length) {
+          toastCursor.current = res.notifications[res.notifications.length - 1].createdAt;
+          setToasts((prev) => [...prev, ...res.notifications]);
+          setNotifications((prev) => [...[...res.notifications].reverse(), ...prev]);
+          setUnreadCount((prev) => prev + res.notifications.length);
         }
       } catch {
         /* ignore transient polling errors */
       }
-    }, EVENT_POLL_MS);
+    }, NOTIFICATION_POLL_MS);
     return () => clearInterval(timer);
   }, [user]);
 
@@ -109,6 +134,27 @@ export function App() {
     const timer = setTimeout(() => setToasts((prev) => prev.slice(1)), TOAST_TTL_MS);
     return () => clearTimeout(timer);
   }, [toasts]);
+
+  async function markNotificationRead(id: string) {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: Date.now() } : n)));
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await api.markNotificationRead(id);
+    } catch {
+      /* the next full load reconciles */
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    const now = Date.now();
+    setNotifications((prev) => prev.map((n) => (n.readAt ? n : { ...n, readAt: now })));
+    setUnreadCount(0);
+    try {
+      await api.markAllNotificationsRead();
+    } catch {
+      /* the next full load reconciles */
+    }
+  }
 
   /* ------------------------------ derived ------------------------------ */
 
@@ -238,6 +284,16 @@ export function App() {
           </span>
           <span className="topbar-title">{viewLabel}</span>
           <span className="topbar-spacer" />
+          <NotificationCenter
+            notifications={notifications}
+            unread={unreadCount}
+            tickets={tickets}
+            loading={notifLoading}
+            onOpen={() => void loadNotifications()}
+            onMarkRead={(id) => void markNotificationRead(id)}
+            onMarkAllRead={() => void markAllNotificationsRead()}
+            onOpenTicket={(ticketId) => setSelectedId(ticketId)}
+          />
           <ThemeToggle />
         </header>
 

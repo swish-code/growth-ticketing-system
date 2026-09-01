@@ -35,6 +35,7 @@ import {
 } from '../tickets';
 import { validateSubmission } from '../validate';
 import { notifyTicketEvent } from '../mailer';
+import { fanOutNotification } from '../notifications';
 
 export const ticketsRouter = Router();
 
@@ -179,7 +180,11 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   );
 
   const created = await getTicket(id);
-  if (created) notifyTicketEvent('created', created, { name: viewer.name, email: viewer.email });
+  if (created) {
+    const createdActor = { name: viewer.name, email: viewer.email };
+    notifyTicketEvent('created', created, createdActor);
+    await fanOutNotification('created', created, createdActor);
+  }
   return res.json({ ticket: created });
 }
 
@@ -233,6 +238,7 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
     );
     const accepted = mapTicket(claimed.rows[0]);
     notifyTicketEvent('accepted', accepted, actor);
+    await fanOutNotification('accepted', accepted, actor);
     return res.json({ ticket: accepted });
   }
 
@@ -265,7 +271,10 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       ticket.area,
     );
     const declined = await getTicket(id);
-    if (declined) notifyTicketEvent('declined', declined, actor, reason);
+    if (declined) {
+      notifyTicketEvent('declined', declined, actor, reason);
+      await fanOutNotification('declined', declined, actor, reason);
+    }
     return res.json({ ticket: declined });
   }
 
@@ -297,7 +306,10 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       ticket.area,
     );
     const scheduled = await getTicket(id);
-    if (scheduled) notifyTicketEvent('scheduled', scheduled, actor);
+    if (scheduled) {
+      notifyTicketEvent('scheduled', scheduled, actor);
+      await fanOutNotification('scheduled', scheduled, actor);
+    }
     return res.json({ ticket: scheduled });
   }
 
@@ -327,7 +339,10 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       ticket.area,
     );
     const completed = await getTicket(id);
-    if (completed) notifyTicketEvent('done', completed, actor);
+    if (completed) {
+      notifyTicketEvent('done', completed, actor);
+      await fanOutNotification('done', completed, actor);
+    }
     return res.json({ ticket: completed });
   }
 
@@ -344,7 +359,10 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
       ticket.area,
     );
     const noted = await getTicket(id);
-    if (noted) notifyTicketEvent('updated', noted, actor, 'The staff notes were updated.');
+    if (noted) {
+      notifyTicketEvent('updated', noted, actor, 'The staff notes were updated.');
+      await fanOutNotification('updated', noted, actor, 'The staff notes were updated.');
+    }
     return res.json({ ticket: noted });
   }
 
@@ -373,7 +391,9 @@ ticketsRouter.delete('/', async (req: Request, res: Response) => {
     id,
     ticket.area,
   );
-  notifyTicketEvent('deleted', ticket, { name: viewer.name, email: viewer.email });
+  const deleteActor = { name: viewer.name, email: viewer.email };
+  notifyTicketEvent('deleted', ticket, deleteActor);
+  await fanOutNotification('deleted', ticket, deleteActor);
 
   return res.json({ ok: true });
 });

@@ -35,14 +35,15 @@ server/
   index.ts              Express app, static SPA hosting
   db.ts                 Pool, schema creation, atomic per-tab ticket counter
   auth.ts               Password hashing, sessions, viewer/permission resolution
-  tickets.ts            Row mapping, audit/activity writers, scheduled + SLA processing
+  tickets.ts            Row mapping, audit writers, scheduled + SLA processing
+  notifications.ts      Notification Center fan-out and per-recipient reads
   validate.ts           Server-side re-validation of every submitted form
   forms.ts              Form Builder overrides
-  routes/               auth · tickets · admin (staff/roles/forms) · events
+  routes/               auth · tickets · admin (staff/roles/forms) · notifications
 client/
   App.tsx               Shell, navigation, polling
   components/           AuthScreen · Dashboard · MyTasks · TabView · RequestForm ·
-                        RequestDetail · AdminPanel · AccountPanel · Notifications
+                        RequestDetail · AdminPanel · AccountPanel · NotificationCenter
   lib/format.ts         Dates, durations, SLA display, CSV export
 ```
 
@@ -176,20 +177,42 @@ no separate cron worker.
 | `/api/staff` | `GET`, `POST` (`create`, `update`, `reset`), `DELETE` | Administrators |
 | `/api/roles` | `GET`, `POST`, `DELETE` | Administrators |
 | `/api/forms` | `GET` (any signed-in), `POST` (administrators) | Mixed |
-| `/api/events` | `GET ?since=<ms>` | Signed-in; SLA events admin-only, max 20 per poll |
+| `/api/notifications` | `GET`, `GET ?since=<ms>`, `POST` (`markRead`, `markAllRead`) | Signed-in, personalized |
 
-The client refreshes tickets every 60 seconds and polls events every 8 seconds; toasts
-close automatically after 5 seconds.
+The client refreshes tickets every 60 seconds and polls for new notifications every 8
+seconds; toasts for freshly-arrived notifications close automatically after 5 seconds.
 
 ---
 
 ## Database
 
 Tables created on boot: `tickets`, `staff`, `roles`, `accounts`, `sessions`,
-`form_settings`, `ticket_counters`, `activity_events`, `ticket_audit`.
+`form_settings`, `ticket_counters`, `activity_events`, `ticket_audit`, `notifications`.
 
 Form answers are stored as JSON in `tickets.data` alongside indexed metadata, so each tab
 keeps its own fields. Dates are stored as `YYYY-MM-DD`; timestamps as epoch milliseconds.
+
+---
+
+## Notification Center
+
+Every lifecycle event fans out into a persisted, **personalized** notification per
+recipient (`notifications` table, one row per event × recipient), so it survives a
+recipient being logged out — unlike a live-only toast, it's still there when they sign
+back in. The bell icon in the topbar shows an unread badge; opening the panel lists the
+full history, newest first, with mark-one/mark-all-read.
+
+Recipients depend on the event:
+
+- **New request** — the requester, plus every staff member who can currently Manage that
+  tab for that brand (so a manager sees it before anyone is assigned).
+- **Every other update** (accepted, declined, scheduled, done, notes, deleted) — the
+  requester, the assignee and the acting staff member, deduplicated.
+- **SLA escalations** — administrators only.
+
+A notification's `ticketId` may point at a request that no longer exists (deleted after
+the notification was sent) — the panel shows "request no longer available" instead of
+attempting to open it.
 
 ---
 

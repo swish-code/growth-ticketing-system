@@ -781,13 +781,19 @@ export interface AuditEntry {
   createdAt: number;
 }
 
-export interface ActivityEvent {
+/**
+ * Notification Center row (spec: personalized notifications, persisted per
+ * recipient so they survive being logged out — replaces the old global,
+ * ephemeral ActivityEvent feed).
+ */
+export interface Notification {
   id: string;
   type: string;
   title: string;
   message: string;
   ticketId: string | null;
   area: string | null;
+  readAt: number | null;
   createdAt: number;
 }
 

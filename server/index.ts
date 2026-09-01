@@ -6,7 +6,7 @@ import { logMailStatus } from './mailer';
 import { authRouter } from './routes/auth';
 import { ticketsRouter } from './routes/tickets';
 import { formsRouter, rolesRouter, staffRouter } from './routes/admin';
-import { eventsRouter } from './routes/events';
+import { notificationsRouter } from './routes/notifications';
 
 const app = express();
 const port = Number(process.env.PORT ?? 8080);
@@ -22,7 +22,7 @@ app.use('/api/tickets', ticketsRouter);
 app.use('/api/staff', staffRouter);
 app.use('/api/roles', rolesRouter);
 app.use('/api/forms', formsRouter);
-app.use('/api/events', eventsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown endpoint.' }));
 
