@@ -2,6 +2,7 @@ import type {
   AuditEntry,
   FormSettings,
   FormValues,
+  ImportResult,
   Notification,
   RequestEligibility,
   Role,
@@ -148,4 +149,8 @@ export const api = {
 
   markAllNotificationsRead: () =>
     post<{ ok: true }>('/api/notifications', { action: 'markAllRead' }),
+
+  /* ------------------------------- import -------------------------------- */
+
+  importCsv: (area: string, csv: string) => post<ImportResult>('/api/import', { area, csv }),
 };

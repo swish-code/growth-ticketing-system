@@ -17,9 +17,9 @@ import {
   type Ticket,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
-import { formatDateTime, formatDuration, statusClass } from '../lib/format';
+import { downloadImportTemplate, formatDateTime, formatDuration, statusClass } from '../lib/format';
 
-type Section = 'staff' | 'roles' | 'submissions' | 'forms' | 'workflow';
+type Section = 'staff' | 'roles' | 'submissions' | 'forms' | 'import' | 'workflow';
 
 interface Props {
   user: AppUser;
@@ -35,6 +35,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'roles', label: 'Roles' },
   { id: 'submissions', label: 'Submissions & Tracking' },
   { id: 'forms', label: 'Form builder' },
+  { id: 'import', label: 'Import' },
   { id: 'workflow', label: 'Workflow' },
 ];
 
@@ -70,6 +71,7 @@ export function AdminPanel(props: Props) {
       {section === 'forms' && (
         <FormBuilderSection settings={props.formSettings} onSaved={props.onFormSettings} />
       )}
+      {section === 'import' && <ImportSection onImported={props.onRefresh} />}
       {section === 'workflow' && <WorkflowSection />}
     </section>
   );
@@ -710,6 +712,111 @@ function FormBuilderSection({
         Menu Updates conditional rules still control conditional visibility regardless of these
         settings.
       </p>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Bulk import (spec: backfill historical/external records)            */
+/* ------------------------------------------------------------------ */
+
+function ImportSection({ onImported }: { onImported: () => void }) {
+  const [area, setArea] = useState(TABS[0].id);
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ inserted: number; errors: { row: number; message: string }[] } | null>(
+    null,
+  );
+  const [error, setError] = useState('');
+
+  const tab = TABS.find((t) => t.id === area) ?? TABS[0];
+
+  async function upload() {
+    if (!file) return;
+    setError('');
+    setResult(null);
+    setBusy(true);
+    try {
+      const csv = await file.text();
+      const res = await api.importCsv(area, csv);
+      setResult(res);
+      if (res.inserted > 0) onImported();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not import the file.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="panel">
+        <h2>Bulk import</h2>
+        <p className="muted small">
+          Backfill historical or external requests from a spreadsheet. The columns must match the
+          tab's own export exactly — download the template below to see the expected format. You
+          choose the Request ID yourself; it is never auto-generated here, so existing ids (even
+          out of the normal sequence) are preserved. Imported requests do not send emails or
+          Notification Center alerts.
+        </p>
+
+        <div className="inline-form">
+          <select
+            value={area}
+            onChange={(e) => {
+              setArea(e.target.value);
+              setResult(null);
+              setError('');
+            }}
+          >
+            {TABS.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn btn-ghost" onClick={() => downloadImportTemplate(tab)}>
+            Download {tab.name} template
+          </button>
+        </div>
+
+        <div className="inline-form" style={{ marginTop: '0.6rem' }}>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => {
+              setFile(e.target.files?.[0] ?? null);
+              setResult(null);
+              setError('');
+            }}
+          />
+          <button type="button" className="btn btn-primary" disabled={!file || busy} onClick={upload}>
+            {busy ? 'Importing…' : 'Upload & import'}
+          </button>
+        </div>
+
+        {error && <p className="form-error">{error}</p>}
+
+        {result && (
+          <div className={`callout ${result.errors.length ? 'callout-danger' : ''}`} style={{ marginTop: '0.9rem' }}>
+            <strong>
+              {result.inserted} request{result.inserted === 1 ? '' : 's'} imported
+              {result.errors.length
+                ? `, ${result.errors.length} row${result.errors.length === 1 ? '' : 's'} skipped:`
+                : '.'}
+            </strong>
+            {result.errors.length > 0 && (
+              <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem' }}>
+                {result.errors.map((e, i) => (
+                  <li key={i} className="small">
+                    {e.row === 0 ? 'File' : `Row ${e.row}`}: {e.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
     </>
   );
 }

@@ -8,18 +8,29 @@ import {
   type TabDef,
 } from '../shared/spec';
 
+export interface ValidateOptions {
+  /**
+   * The minimum campaign-date lead time applies to every live requester,
+   * administrators included — there is no bypass on either side. The
+   * bulk importer is the one legitimate exception: it backfills historical
+   * records whose campaign dates are necessarily in the past, so it turns
+   * this check off rather than reusing the live-submission rule.
+   */
+  enforceMinDate?: boolean;
+}
+
 /**
  * Server-side re-validation of a submitted form. The browser enforces the same
- * rules, but spec §23 requires the backend to repeat every check. The minimum
- * campaign-date lead time applies to every requester, administrators included
- * — there is no bypass on either side.
+ * rules, but spec §23 requires the backend to repeat every check.
  */
 export function validateSubmission(
   tab: TabDef,
   raw: FormValues,
   settings: FormSettings,
   now = Date.now(),
+  opts: ValidateOptions = {},
 ): { values: FormValues } | { error: string } {
+  const enforceMinDate = opts.enforceMinDate ?? true;
   const values: FormValues = {};
 
   // Only keep values for fields that exist and are enabled.
@@ -68,9 +79,11 @@ export function validateSubmission(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return { error: `${field.label} must be a valid date.` };
       }
-      const earliest = earliestDateFor(field, now);
-      if (earliest && date < earliest) {
-        return { error: `${field.label} must be ${earliest} or later.` };
+      if (enforceMinDate) {
+        const earliest = earliestDateFor(field, now);
+        if (earliest && date < earliest) {
+          return { error: `${field.label} must be ${earliest} or later.` };
+        }
       }
       if (field.mustBeAfter) {
         const other = values[field.mustBeAfter];

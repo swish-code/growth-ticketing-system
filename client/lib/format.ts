@@ -1,6 +1,8 @@
 import {
   MENU_ISSUES,
+  csvColumnsFor,
   priorityTargetMs,
+  todayKey,
   toDateKey,
   type RequestEligibility,
   type TabDef,
@@ -130,20 +132,23 @@ function csvCell(value: unknown): string {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
+/** Triggers a browser download of a UTF-8 CSV (BOM'd so Arabic reads correctly in Excel). */
+function downloadCsv(rows: unknown[][], filename: string): void {
+  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function exportCsv(tab: TabDef, tickets: Ticket[]): void {
   const fieldLabels = tab.fields.map((f) => f.label);
-  const header = [
-    'Request ID',
-    'Tab',
-    'Submitted date',
-    'Submitted time',
-    'Requested by',
-    'Requester email',
-    'Status',
-    'Assignee',
-    'Staff notes',
-    ...fieldLabels,
-  ];
+  const header = csvColumnsFor(tab);
 
   const rows = tickets.map((ticket) => [
     ticket.id,
@@ -158,18 +163,48 @@ export function exportCsv(tab: TabDef, tickets: Ticket[]): void {
     ...fieldLabels.map((label) => ticket.data[label] ?? ''),
   ]);
 
-  const csv = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  downloadCsv(
+    [header, ...rows],
+    `${tab.name.toLowerCase().replace(/\s+/g, '-')}-${toDateKey(Date.now())}.csv`,
+  );
+}
 
-  // UTF-8 BOM keeps Arabic captions readable in Excel.
-  const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${tab.name.toLowerCase().replace(/\s+/g, '-')}-${toDateKey(Date.now())}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+/** One plausible example value per field, so a downloaded template shows the expected format. */
+function exampleValueFor(field: TabDef['fields'][number]): string {
+  if (field.type === 'multi') return (field.options ?? []).slice(0, 2).join(' | ') || 'Example';
+  if (field.type === 'select') return field.options?.[0] ?? 'Example';
+  if (field.type === 'date') return todayKey();
+  if (field.type === 'number') return '100';
+  if (field.type === 'url') return 'https://example.com/image.jpg';
+  return `Example ${field.label}`;
+}
+
+/**
+ * Downloadable CSV template for bulk import: the exact same columns as
+ * export (spec: import must offer every field export offers, nothing
+ * extra), plus one filled-in example row so the format is unambiguous.
+ * Request ID is left blank on the example row — the admin fills in their
+ * own id, it is never auto-generated on import.
+ */
+export function downloadImportTemplate(tab: TabDef): void {
+  const header = csvColumnsFor(tab);
+  const example = [
+    '',
+    tab.name,
+    todayKey(),
+    '09:00',
+    'Jane Doe',
+    'jane@swishhh.net',
+    'Done',
+    'jane@swishhh.net',
+    'Optional staff note',
+    ...tab.fields.map(exampleValueFor),
+  ];
+
+  downloadCsv(
+    [header, example],
+    `${tab.name.toLowerCase().replace(/\s+/g, '-')}-import-template.csv`,
+  );
 }
 
 /* --------------------------- request frequency -------------------------- */

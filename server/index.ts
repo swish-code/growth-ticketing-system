@@ -7,12 +7,15 @@ import { authRouter } from './routes/auth';
 import { ticketsRouter } from './routes/tickets';
 import { formsRouter, rolesRouter, staffRouter } from './routes/admin';
 import { notificationsRouter } from './routes/notifications';
+import { importRouter } from './routes/import';
 
 const app = express();
 const port = Number(process.env.PORT ?? 8080);
 
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '1mb' }));
+// Bulk CSV imports can run well past 1mb once paragraph fields and a few
+// hundred historical rows are involved.
+app.use(express.json({ limit: '8mb' }));
 app.use(cookieParser());
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -23,6 +26,7 @@ app.use('/api/staff', staffRouter);
 app.use('/api/roles', rolesRouter);
 app.use('/api/forms', formsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/import', importRouter);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Unknown endpoint.' }));
 

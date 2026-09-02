@@ -543,6 +543,40 @@ export function deriveCampaignDate(values: FormValues, today: string): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* CSV export / import columns                                         */
+/*                                                                      */
+/* One definition for both directions — export, the downloadable       */
+/* import template, and server-side import parsing all call this, so   */
+/* the three can never list different columns.                        */
+/* ------------------------------------------------------------------ */
+
+export const CSV_META_COLUMNS = [
+  'Request ID',
+  'Tab',
+  'Submitted date',
+  'Submitted time',
+  'Requested by',
+  'Requester email',
+  'Status',
+  'Assignee',
+  'Staff notes',
+] as const;
+
+export function csvColumnsFor(tab: TabDef): string[] {
+  return [...CSV_META_COLUMNS, ...tab.fields.map((f) => f.label)];
+}
+
+export interface ImportRowError {
+  row: number;
+  message: string;
+}
+
+export interface ImportResult {
+  inserted: number;
+  errors: ImportRowError[];
+}
+
+/* ------------------------------------------------------------------ */
 /* Workflow (spec §15)                                                 */
 /* ------------------------------------------------------------------ */
 
