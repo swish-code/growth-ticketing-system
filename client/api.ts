@@ -93,6 +93,10 @@ export const api = {
   createTicket: (area: string, data: FormValues) =>
     post<{ ticket: Ticket }>('/api/tickets', { action: 'create', area, data }, SUBMIT_TIMEOUT_MS),
 
+  /** Corrects an already-submitted request's field values. Administrators only. */
+  editTicket: (id: string, data: FormValues) =>
+    post<{ ticket: Ticket }>('/api/tickets', { action: 'edit', id, data }, SUBMIT_TIMEOUT_MS),
+
   updateTicket: (payload: {
     id: string;
     op: 'accept' | 'decline' | 'schedule' | 'done' | 'notes';

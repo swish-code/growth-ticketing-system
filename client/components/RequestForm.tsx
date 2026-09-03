@@ -9,6 +9,7 @@ import {
   type FormValues,
   type RequestEligibility,
   type TabDef,
+  type Ticket,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
 import { EligibilityBanner } from './EligibilityBanner';
@@ -20,16 +21,48 @@ interface Props {
   formSettings: FormSettings;
   /** Pre-fills the tab's primary date field — set when opened from a calendar day. */
   initialDate?: string;
+  /**
+   * Editing an already-submitted request instead of creating one — an
+   * administrator correcting a wrong name or a mistyped field. Only the
+   * submitted field values change; status, assignment and timestamps are
+   * untouched, and the minimum campaign-date lead time and the request-
+   * frequency cooldown do not apply (this isn't a new submission).
+   */
+  ticket?: Ticket;
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
 }
 
-export function RequestForm({ user, tab, formSettings, initialDate, onClose, onCreated }: Props) {
+/**
+ * A `customOption` field stores the free-text replacement in place of the
+ * placeholder once submitted (see handleSubmit below), so re-opening it for
+ * edit needs to reconstruct which tile that text belongs to — otherwise the
+ * tile shows nothing selected and the custom text box never appears at all.
+ */
+function seedFromTicket(tab: TabDef, ticket: Ticket): { values: FormValues; customText: Record<string, string> } {
+  const values: FormValues = { ...ticket.data };
+  const customText: Record<string, string> = {};
+  for (const field of tab.fields) {
+    if (field.type !== 'multi' || !field.customOption) continue;
+    const raw = values[field.label];
+    if (!Array.isArray(raw)) continue;
+    const unmatched = raw.find((v) => !(field.options ?? []).includes(String(v)));
+    if (unmatched !== undefined) {
+      customText[field.label] = String(unmatched);
+      values[field.label] = raw.map((v) => (v === unmatched ? field.customOption : v));
+    }
+  }
+  return { values, customText };
+}
+
+export function RequestForm({ user, tab, formSettings, initialDate, ticket, onClose, onSaved }: Props) {
+  const isEditing = Boolean(ticket);
   const dateField = useMemo(() => primaryDateField(tab), [tab]);
-  const [values, setValues] = useState<FormValues>(() =>
-    initialDate && dateField ? { [dateField.label]: initialDate } : {},
+  const seeded = useMemo(() => (ticket ? seedFromTicket(tab, ticket) : null), [tab, ticket]);
+  const [values, setValues] = useState<FormValues>(
+    () => seeded?.values ?? (initialDate && dateField ? { [dateField.label]: initialDate } : {}),
   );
-  const [customText, setCustomText] = useState<Record<string, string>>({});
+  const [customText, setCustomText] = useState<Record<string, string>>(() => seeded?.customText ?? {});
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [eligibility, setEligibility] = useState<RequestEligibility | null>(null);
@@ -40,8 +73,10 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
   );
 
   // Request-frequency cooldown (spec: request frequency rules). Re-checked
-  // authoritatively by the server on submit — this is display only.
+  // authoritatively by the server on submit — this is display only, and
+  // doesn't apply at all when correcting an existing request.
   useEffect(() => {
+    if (isEditing) return;
     let active = true;
     api
       .eligibility(tab.id)
@@ -54,7 +89,7 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
     return () => {
       active = false;
     };
-  }, [tab.id]);
+  }, [tab.id, isEditing]);
 
   function setValue(label: string, value: unknown) {
     setValues((prev) => ({ ...prev, [label]: value }));
@@ -68,7 +103,12 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
     setValue(field.label, next);
   }
 
-  /** Minimum selectable date — applies to everyone, no admin bypass. */
+  /**
+   * Minimum selectable date — applies to everyone, no admin bypass. The lead
+   * time is skipped while editing (correcting a date that's already in the
+   * past shouldn't be blocked); `mustBeAfter` stays enforced either way,
+   * since it's a data-integrity rule, not a submission-timing one.
+   */
   function minDateFor(field: FieldDef): string | undefined {
     if (field.mustBeAfter) {
       const start = values[field.mustBeAfter];
@@ -78,7 +118,7 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
         return next.toISOString().slice(0, 10);
       }
     }
-    return earliestDateFor(field);
+    return isEditing ? undefined : earliestDateFor(field);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -118,17 +158,25 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
       if (!empty) payload[field.label] = value;
     }
 
-    if (eligibility && !eligibility.eligible) {
+    if (!isEditing && eligibility && !eligibility.eligible) {
       setError("You can't submit yet — see the notice above.");
       return;
     }
 
     setSubmitting(true);
     try {
-      await api.createTicket(tab.id, payload);
-      onCreated();
+      if (isEditing && ticket) {
+        await api.editTicket(ticket.id, payload);
+      } else {
+        await api.createTicket(tab.id, payload);
+      }
+      onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not submit the request.');
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : `Could not ${isEditing ? 'save the changes' : 'submit the request'}.`,
+      );
     } finally {
       setSubmitting(false);
     }
@@ -139,14 +187,18 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <div>
-            <h2>New {tab.name} request</h2>
-            <p className="muted">All fields marked with * are required.</p>
+            <h2>{isEditing ? `Edit ${tab.name} request ${ticket!.id}` : `New ${tab.name} request`}</h2>
+            <p className="muted">
+              {isEditing
+                ? 'Correcting the submitted details. Status, assignment and history are unaffected.'
+                : 'All fields marked with * are required.'}
+            </p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
         </header>
 
         <div className="modal-body">
-          <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} />
+          {!isEditing && <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} />}
 
           <form className="form-grid" onSubmit={handleSubmit}>
           {fields.map((field) => {
@@ -257,14 +309,14 @@ export function RequestForm({ user, tab, formSettings, initialDate, onClose, onC
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={submitting || (eligibility ? !eligibility.eligible : false)}
+              disabled={submitting || (!isEditing && eligibility ? !eligibility.eligible : false)}
               title={
-                eligibility && !eligibility.eligible
+                !isEditing && eligibility && !eligibility.eligible
                   ? 'You cannot submit until the waiting period has passed.'
                   : undefined
               }
             >
-              {submitting ? 'Submitting…' : 'Submit request'}
+              {submitting ? 'Saving…' : isEditing ? 'Save changes' : 'Submit request'}
             </button>
           </div>
           </form>

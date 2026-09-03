@@ -104,6 +104,7 @@ async function handleWrite(req: Request, res: Response): Promise<Response> {
   try {
     if (action === 'create') return await createTicket(req, res, viewer);
     if (action === 'update') return await updateTicket(req, res, viewer);
+    if (action === 'edit') return await editTicket(req, res, viewer);
     return res.status(400).json({ error: 'Unknown action.' });
   } catch (error) {
     console.error('[tickets]', action, error);
@@ -186,6 +187,60 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
     await fanOutNotification('created', created, createdActor);
   }
   return res.json({ ticket: created });
+}
+
+/**
+ * Corrects a mistake in an already-submitted request — a wrong campaign
+ * name, a typo in a field, etc. Administrators only. Deliberately separate
+ * from the workflow actions below: it only ever touches the submitted field
+ * values (brand/title/campaign date/data), never status, assignment or
+ * timestamps, and — unlike a fresh submission — doesn't enforce the minimum
+ * campaign-date lead time, since the admin is correcting an existing record,
+ * not creating a new one.
+ */
+async function editTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
+  if (!viewer.isAdmin) return res.status(403).json({ error: 'Administrators only.' });
+
+  const id = String(req.body?.id ?? '');
+  const ticket = await getTicket(id);
+  if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+
+  const tab = getTab(ticket.area);
+  if (!tab) return res.status(400).json({ error: 'Unknown request tab.' });
+
+  const settings = await loadFormSettings();
+  const result = validateSubmission(tab, req.body?.data ?? {}, settings, Date.now(), {
+    enforceMinDate: false,
+  });
+  if ('error' in result) return res.status(400).json({ error: result.error });
+
+  const values = result.values;
+  const brand = String(values.Brand ?? '');
+  const title = deriveTitle(values);
+  const campaignDate = deriveCampaignDate(values, todayKey());
+
+  await query(
+    `UPDATE tickets SET brand = $2, title = $3, campaign_date = $4, data = $5 WHERE id = $1`,
+    [id, brand, title, campaignDate, JSON.stringify(values)],
+  );
+
+  const actor = { name: viewer.name, email: viewer.email };
+  await writeAudit(id, 'Request edited', actor, { before: ticket.data, after: values });
+  await writeEvent(
+    'ticket.updated',
+    'Request edited',
+    `${tab.name} · ${id} · ${title} — by ${viewer.name}`,
+    id,
+    tab.id,
+  );
+
+  const edited = await getTicket(id);
+  if (edited) {
+    const detail = 'Request details were edited by an administrator.';
+    notifyTicketEvent('updated', edited, actor, detail);
+    await fanOutNotification('updated', edited, actor, detail);
+  }
+  return res.json({ ticket: edited });
 }
 
 type WorkflowOp = 'accept' | 'decline' | 'schedule' | 'done' | 'notes';

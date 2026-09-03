@@ -43,6 +43,7 @@ export function App() {
   const [view, setView] = useState('dashboard');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [formRequest, setFormRequest] = useState<{ area: string; date?: string } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [toasts, setToasts] = useState<Notification[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -162,6 +163,10 @@ export function App() {
   const selected = useMemo(
     () => tickets.find((t) => t.id === selectedId) ?? null,
     [tickets, selectedId],
+  );
+  const editingTicket = useMemo(
+    () => tickets.find((t) => t.id === editingId) ?? null,
+    [tickets, editingId],
   );
 
   useEffect(() => {
@@ -353,8 +358,22 @@ export function App() {
           formSettings={formSettings}
           initialDate={formRequest.date}
           onClose={() => setFormRequest(null)}
-          onCreated={() => {
+          onSaved={() => {
             setFormRequest(null);
+            void refresh();
+          }}
+        />
+      )}
+
+      {editingTicket && getTab(editingTicket.area) && (
+        <RequestForm
+          user={user}
+          tab={getTab(editingTicket.area)!}
+          formSettings={formSettings}
+          ticket={editingTicket}
+          onClose={() => setEditingId(null)}
+          onSaved={() => {
+            setEditingId(null);
             void refresh();
           }}
         />
@@ -366,6 +385,10 @@ export function App() {
           ticket={selected}
           onClose={() => setSelectedId(null)}
           onChanged={() => void refresh()}
+          onEdit={() => {
+            setEditingId(selected.id);
+            setSelectedId(null);
+          }}
         />
       )}
 

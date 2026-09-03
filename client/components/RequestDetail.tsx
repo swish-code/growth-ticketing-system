@@ -28,9 +28,11 @@ interface Props {
   ticket: Ticket;
   onClose: () => void;
   onChanged: () => void;
+  /** Opens the request in edit mode — administrators only. */
+  onEdit: () => void;
 }
 
-export function RequestDetail({ user, ticket, onClose, onChanged }: Props) {
+export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Props) {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [notes, setNotes] = useState(ticket.notes);
   const [declineReason, setDeclineReason] = useState('');
@@ -112,7 +114,14 @@ export function RequestDetail({ user, ticket, onClose, onChanged }: Props) {
               {tabName(ticket.area)} · {ticket.brand}
             </p>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            {user.isAdmin && (
+              <button type="button" className="btn btn-ghost" onClick={onEdit}>
+                Edit request
+              </button>
+            )}
+            <button type="button" className="icon-btn" onClick={onClose} aria-label="Close"><IconClose size={17} /></button>
+          </div>
         </header>
 
         <div className="modal-body">
