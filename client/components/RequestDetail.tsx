@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   MENU_ISSUES,
+  STATUSES,
   canManage,
   canMarkDone,
   dateReached,
@@ -10,6 +11,7 @@ import {
   tabName,
   type AuditEntry,
   type Ticket,
+  type TicketStatus,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
 import { IconClose } from './Icons';
@@ -37,6 +39,8 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
   const [notes, setNotes] = useState(ticket.notes);
   const [declineReason, setDeclineReason] = useState('');
   const [showDecline, setShowDecline] = useState(false);
+  const [showCorrectStatus, setShowCorrectStatus] = useState(false);
+  const [newStatus, setNewStatus] = useState<TicketStatus | ''>('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -97,6 +101,30 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
       onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not delete the request.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function correctStatus() {
+    if (!newStatus) return;
+    if (
+      !window.confirm(
+        `Change status from ${ticket.status} to ${newStatus}? This is a manual correction — ` +
+          'it does not re-check the normal workflow rules (e.g. the campaign-date requirement for Done).',
+      )
+    ) {
+      return;
+    }
+    setError('');
+    setBusy(true);
+    try {
+      await api.correctStatus(ticket.id, newStatus);
+      setShowCorrectStatus(false);
+      setNewStatus('');
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not correct the status.');
     } finally {
       setBusy(false);
     }
@@ -278,6 +306,15 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
                 </button>
               )}
               {user.isAdmin && (
+                <button
+                  className="btn btn-ghost"
+                  disabled={busy}
+                  onClick={() => setShowCorrectStatus((v) => !v)}
+                >
+                  Correct status
+                </button>
+              )}
+              {user.isAdmin && (
                 <button className="btn btn-ghost" disabled={busy} onClick={remove}>
                   Delete request
                 </button>
@@ -301,6 +338,29 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
                 onClick={() => run('decline')}
               >
                 Confirm decline
+              </button>
+            </div>
+          )}
+
+          {showCorrectStatus && user.isAdmin && (
+            <div className="decline-box">
+              <label htmlFor="correct-status">
+                Correct status — a manual fix for a workflow mistake, not a workflow action itself
+              </label>
+              <select
+                id="correct-status"
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value as TicketStatus)}
+              >
+                <option value="">Select a status…</option>
+                {STATUSES.filter((s) => s !== ticket.status).map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <button className="btn btn-danger" disabled={busy || !newStatus} onClick={correctStatus}>
+                Confirm status change
               </button>
             </div>
           )}

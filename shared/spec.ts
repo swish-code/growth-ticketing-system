@@ -587,6 +587,17 @@ export const STATUSES: TicketStatus[] = ['New', 'In progress', 'Declined', 'Sche
 /** Statuses that no longer need staff action. */
 export const CLOSED_STATUSES: TicketStatus[] = ['Declined', 'Scheduled', 'Done'];
 
+export interface BulkActionFailure {
+  id: string;
+  reason: string;
+}
+
+/** Result of a bulk "done" or "delete" — each id is applied independently. */
+export interface BulkActionResult {
+  succeeded: string[];
+  failed: BulkActionFailure[];
+}
+
 export function isClosed(status: string): boolean {
   return CLOSED_STATUSES.includes(status as TicketStatus);
 }

@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   MENU_ISSUES,
   STATUSES,
+  canManage,
   hasFormAccess,
   hasSubmissionAccess,
   toDateKey,
+  type BulkActionResult,
   type RequestEligibility,
   type TabDef,
   type Ticket,
 } from '../../shared/spec';
-import { api, type AppUser } from '../api';
+import { ApiError, api, type AppUser } from '../api';
 import {
   displayValue,
   exportCsv,
@@ -30,13 +32,14 @@ interface Props {
   tickets: Ticket[];
   onOpen: (ticket: Ticket) => void;
   onNew: (date?: string) => void;
+  onChanged: () => void;
 }
 
 const EMPTY = '';
 
 type SubView = 'list' | 'calendar';
 
-export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
+export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props) {
   const [subView, setSubView] = useState<SubView>('list');
   const [search, setSearch] = useState(EMPTY);
   const [status, setStatus] = useState(EMPTY);
@@ -45,11 +48,26 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
   const [to, setTo] = useState(EMPTY);
   const [aggregator, setAggregator] = useState(EMPTY);
   const [eligibility, setEligibility] = useState<RequestEligibility | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
+  const [bulkError, setBulkError] = useState('');
 
   const aggregatorField = tab.fields.find((f) => f.label === 'Aggregator');
   const isMenuIssues = tab.id === MENU_ISSUES;
   const canSubmit = hasFormAccess(user);
   const canRead = hasSubmissionAccess(user);
+  const canBulkDone = hasSubmissionAccess(user) && canManage(user, tab.id);
+  const canBulkDelete = user.isAdmin;
+  const canBulkSelect = canBulkDone || canBulkDelete;
+
+  // A new tab, or the underlying ticket list changing shape, invalidates any
+  // in-progress selection — safer than risking a stale id in a bulk request.
+  useEffect(() => {
+    setSelected(new Set());
+    setBulkResult(null);
+    setBulkError('');
+  }, [tab.id]);
 
   // Request-frequency cooldown for this tab (spec: request frequency rules).
   useEffect(() => {
@@ -98,6 +116,46 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
     const total = completed.reduce((sum, t) => sum + ((t.completedAt as number) - t.createdAt), 0);
     return total / completed.length;
   }, [filtered]);
+
+  const filteredIds = useMemo(() => filtered.map((t) => t.id), [filtered]);
+  const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllFiltered() {
+    setSelected((prev) => {
+      if (allFilteredSelected) return new Set();
+      return new Set(filteredIds);
+    });
+  }
+
+  async function runBulk(op: 'done' | 'delete') {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (op === 'delete' && !window.confirm(`Delete ${ids.length} selected request(s)? This cannot be undone.`)) {
+      return;
+    }
+    setBulkBusy(true);
+    setBulkError('');
+    setBulkResult(null);
+    try {
+      const result = await api.bulkTickets(op, ids);
+      setBulkResult(result);
+      setSelected(new Set(result.failed.map((f) => f.id)));
+      onChanged();
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : 'The bulk action failed. Please try again.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   if (!canRead) {
     return (
@@ -215,10 +273,62 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
         </label>
       </div>
 
+      {canBulkSelect && selected.size > 0 && (
+        <div className="actions-row" style={{ alignItems: 'center', margin: '0.7rem 0' }}>
+          <span>{selected.size} selected</span>
+          {canBulkDone && (
+            <button className="btn btn-success" disabled={bulkBusy} onClick={() => runBulk('done')}>
+              Mark Done
+            </button>
+          )}
+          {canBulkDelete && (
+            <button className="btn btn-danger" disabled={bulkBusy} onClick={() => runBulk('delete')}>
+              Delete
+            </button>
+          )}
+          <button className="btn btn-ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
+            Clear selection
+          </button>
+        </div>
+      )}
+
+      {bulkError && <p className="form-error">{bulkError}</p>}
+
+      {bulkResult && (
+        <div className={`callout ${bulkResult.failed.length ? 'callout-danger' : ''}`}>
+          <strong>
+            {bulkResult.succeeded.length} succeeded
+            {bulkResult.failed.length ? `, ${bulkResult.failed.length} failed` : ''}.
+          </strong>
+          {bulkResult.failed.length > 0 && (
+            <ul className="audit-details">
+              {bulkResult.failed.map((f) => (
+                <li key={f.id}>
+                  {f.id}: {f.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button className="btn btn-ghost" onClick={() => setBulkResult(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
+              {canBulkSelect && (
+                <th style={{ width: '2.2rem', textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleAllFiltered}
+                    aria-label="Select all filtered requests"
+                  />
+                </th>
+              )}
               <th>Request</th>
               <th>Brand</th>
               <th>Requested by</th>
@@ -233,6 +343,16 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
               const sla = menuIssueSla(ticket);
               return (
                 <tr key={ticket.id} className="clickable" onClick={() => onOpen(ticket)}>
+                  {canBulkSelect && (
+                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(ticket.id)}
+                        onChange={() => toggleOne(ticket.id)}
+                        aria-label={`Select ${ticket.id}`}
+                      />
+                    </td>
+                  )}
                   <td>
                     <div className="cell-id">{ticket.id}</div>
                     <div className="muted small">{ticket.title}</div>
@@ -268,7 +388,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew }: Props) {
             })}
             {!filtered.length && (
               <tr>
-                <td colSpan={7} className="muted center">
+                <td colSpan={canBulkSelect ? 8 : 7} className="muted center">
                   No requests match these filters.
                 </td>
               </tr>

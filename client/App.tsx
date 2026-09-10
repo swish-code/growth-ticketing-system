@@ -326,6 +326,7 @@ export function App() {
             tickets={tickets}
             onOpen={(t) => setSelectedId(t.id)}
             onNew={(date) => setFormRequest({ area: activeTab.id, date })}
+            onChanged={() => void refresh()}
           />
         )}
 

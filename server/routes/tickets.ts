@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import {
   MENU_ISSUES,
+  STATUSES,
   canManage,
   canUseBrand,
   computeEligibility,
@@ -13,7 +14,9 @@ import {
   tabAccess,
   tabName,
   todayKey,
+  type BulkActionResult,
   type Ticket,
+  type TicketStatus,
   type Viewer,
 } from '../../shared/spec';
 import { resolveViewer } from '../auth';
@@ -31,6 +34,7 @@ import {
   processDueAndEscalations,
   writeAudit,
   writeEvent,
+  type Actor,
   type TicketRow,
 } from '../tickets';
 import { validateSubmission } from '../validate';
@@ -105,6 +109,8 @@ async function handleWrite(req: Request, res: Response): Promise<Response> {
     if (action === 'create') return await createTicket(req, res, viewer);
     if (action === 'update') return await updateTicket(req, res, viewer);
     if (action === 'edit') return await editTicket(req, res, viewer);
+    if (action === 'correctStatus') return await correctStatus(req, res, viewer);
+    if (action === 'bulk') return await bulkAction(req, res, viewer);
     return res.status(400).json({ error: 'Unknown action.' });
   } catch (error) {
     console.error('[tickets]', action, error);
@@ -243,6 +249,61 @@ async function editTicket(req: Request, res: Response, viewer: Viewer): Promise<
   return res.json({ ticket: edited });
 }
 
+/**
+ * Manually sets a request's status to correct a workflow mistake (e.g.
+ * marked Done by accident). Administrators only. Deliberately a raw
+ * correction, not a re-run of the normal workflow actions: unlike Mark
+ * Done, it does NOT enforce the minimum-campaign-date rule (spec §15.5) —
+ * this is the escape hatch for when that rule (or any other workflow gate)
+ * already let a mistake happen and it needs undoing, not another gate to
+ * get past. It only touches status plus the timestamps/fields that would
+ * otherwise be left stale (completed_at, and — for a full reset to New —
+ * owner_email/accepted_at/decline_reason).
+ */
+async function correctStatus(req: Request, res: Response, viewer: Viewer): Promise<Response> {
+  if (!viewer.isAdmin) return res.status(403).json({ error: 'Administrators only.' });
+
+  const id = String(req.body?.id ?? '');
+  const ticket = await getTicket(id);
+  if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+
+  const status = String(req.body?.status ?? '') as TicketStatus;
+  if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+  if (status === ticket.status) return res.status(400).json({ error: `Already ${status}.` });
+  if (status === 'Scheduled' && ticket.area === MENU_ISSUES) {
+    return res.status(400).json({ error: 'Menu Issues requests cannot be Scheduled.' });
+  }
+
+  const completedAt = status === 'Done' ? (ticket.completedAt ?? Date.now()) : null;
+  const ownerEmail = status === 'New' ? null : ticket.ownerEmail;
+  const acceptedAt = status === 'New' ? null : ticket.acceptedAt;
+  const declineReason = status === 'Declined' ? ticket.declineReason : '';
+
+  await query(
+    `UPDATE tickets SET status = $2, owner_email = $3, accepted_at = $4, completed_at = $5, decline_reason = $6
+     WHERE id = $1`,
+    [id, status, ownerEmail, acceptedAt, completedAt, declineReason],
+  );
+
+  const actor = { name: viewer.name, email: viewer.email };
+  await writeAudit(id, 'Status corrected', actor, { from: ticket.status, to: status });
+  await writeEvent(
+    'ticket.updated',
+    'Status corrected',
+    `${tabName(ticket.area)} · ${id} · ${ticket.title} — ${ticket.status} → ${status} by ${viewer.name}`,
+    id,
+    ticket.area,
+  );
+
+  const corrected = await getTicket(id);
+  if (corrected) {
+    const detail = `Status corrected by an administrator: ${ticket.status} → ${status}.`;
+    notifyTicketEvent('updated', corrected, actor, detail);
+    await fanOutNotification('updated', corrected, actor, detail);
+  }
+  return res.json({ ticket: corrected });
+}
+
 type WorkflowOp = 'accept' | 'decline' | 'schedule' | 'done' | 'notes';
 
 async function updateTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
@@ -370,35 +431,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
 
   /* -------------------------------- done -------------------------------- */
   if (op === 'done') {
-    if (ticket.status === 'Done') return res.status(409).json({ error: 'Already completed.' });
-    if (ticket.status === 'Declined') {
-      return res.status(409).json({ error: 'A declined request cannot be completed.' });
-    }
-    if (!canMarkDone(ticket, now)) {
-      return res.status(400).json({
-        error: `Done is available from ${ticket.campaignDate}. Use Schedule until then.`,
-      });
-    }
-
-    await query(
-      `UPDATE tickets SET status = 'Done', completed_at = $2, owner_email = COALESCE(owner_email, $3)
-       WHERE id = $1`,
-      [id, now, viewer.email],
-    );
-    await writeAudit(id, 'Completed', actor, { from: ticket.status, to: 'Done' });
-    await writeEvent(
-      'ticket.updated',
-      'Request completed',
-      `${tabName(ticket.area)} · ${id} · ${ticket.title} — by ${viewer.name}`,
-      id,
-      ticket.area,
-    );
-    const completed = await getTicket(id);
-    if (completed) {
-      notifyTicketEvent('done', completed, actor);
-      await fanOutNotification('done', completed, actor);
-    }
-    return res.json({ ticket: completed });
+    const result = await markTicketDone(ticket, viewer, actor);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    return res.json({ ticket: result.ticket });
   }
 
   /* -------------------------------- notes ------------------------------- */
@@ -425,30 +460,141 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
 }
 
 /* ------------------------------------------------------------------ */
+/* Shared single-request actions — used by both the single-item routes */
+/* above and the bulk endpoint below, so the two never drift apart      */
+/* ------------------------------------------------------------------ */
+
+interface ActionOk {
+  ok: true;
+  ticket: Ticket;
+}
+interface ActionFail {
+  ok: false;
+  status: number;
+  error: string;
+}
+type ActionResult = ActionOk | ActionFail;
+
+/** The exact same rules as the "Mark Done" workflow action (spec §15.5). */
+async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
+  if (!hasSubmissionAccess(viewer)) {
+    return { ok: false, status: 403, error: 'Your role does not allow workflow actions.' };
+  }
+  if (!canManage(viewer, ticket.area)) {
+    return { ok: false, status: 403, error: 'You need Manage access on this tab.' };
+  }
+  if (!canUseBrand(viewer, ticket.brand)) {
+    return { ok: false, status: 403, error: 'You do not have access to this brand.' };
+  }
+  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+    return { ok: false, status: 403, error: `This request is assigned to ${ticket.ownerEmail}.` };
+  }
+  if (ticket.status === 'Done') return { ok: false, status: 409, error: 'Already completed.' };
+  if (ticket.status === 'Declined') {
+    return { ok: false, status: 409, error: 'A declined request cannot be completed.' };
+  }
+  if (!canMarkDone(ticket)) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Done is available from ${ticket.campaignDate}. Use Schedule until then.`,
+    };
+  }
+
+  const now = Date.now();
+  await query(
+    `UPDATE tickets SET status = 'Done', completed_at = $2, owner_email = COALESCE(owner_email, $3)
+     WHERE id = $1`,
+    [ticket.id, now, viewer.email],
+  );
+  await writeAudit(ticket.id, 'Completed', actor, { from: ticket.status, to: 'Done' });
+  await writeEvent(
+    'ticket.updated',
+    'Request completed',
+    `${tabName(ticket.area)} · ${ticket.id} · ${ticket.title} — by ${viewer.name}`,
+    ticket.id,
+    ticket.area,
+  );
+  const completed = await getTicket(ticket.id);
+  if (!completed) return { ok: false, status: 500, error: 'Could not reload the request.' };
+  notifyTicketEvent('done', completed, actor);
+  await fanOutNotification('done', completed, actor);
+  return { ok: true, ticket: completed };
+}
+
+async function deleteTicketRecord(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
+  if (!viewer.isAdmin) return { ok: false, status: 403, error: 'Administrators only.' };
+
+  await query(`DELETE FROM ticket_audit WHERE ticket_id = $1`, [ticket.id]);
+  await query(`DELETE FROM tickets WHERE id = $1`, [ticket.id]);
+  await writeEvent(
+    'ticket.deleted',
+    'Request deleted',
+    `${tabName(ticket.area)} · ${ticket.id} · ${ticket.title} — by ${viewer.name}`,
+    ticket.id,
+    ticket.area,
+  );
+  notifyTicketEvent('deleted', ticket, actor);
+  await fanOutNotification('deleted', ticket, actor);
+  return { ok: true, ticket };
+}
+
+/* ------------------------------------------------------------------ */
 /* DELETE — administrators only (spec §21.2)                           */
 /* ------------------------------------------------------------------ */
 
 ticketsRouter.delete('/', async (req: Request, res: Response) => {
   const viewer = await resolveViewer(req);
   if (!viewer) return res.status(401).json({ error: 'Not signed in.' });
-  if (!viewer.isAdmin) return res.status(403).json({ error: 'Administrators only.' });
 
   const id = String(req.query.id ?? req.body?.id ?? '');
   const ticket = await getTicket(id);
   if (!ticket) return res.status(404).json({ error: 'Request not found.' });
 
-  await query(`DELETE FROM ticket_audit WHERE ticket_id = $1`, [id]);
-  await query(`DELETE FROM tickets WHERE id = $1`, [id]);
-  await writeEvent(
-    'ticket.deleted',
-    'Request deleted',
-    `${tabName(ticket.area)} · ${id} · ${ticket.title} — by ${viewer.name}`,
-    id,
-    ticket.area,
-  );
-  const deleteActor = { name: viewer.name, email: viewer.email };
-  notifyTicketEvent('deleted', ticket, deleteActor);
-  await fanOutNotification('deleted', ticket, deleteActor);
-
+  const actor = { name: viewer.name, email: viewer.email };
+  const result = await deleteTicketRecord(ticket, viewer, actor);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
   return res.json({ ok: true });
 });
+
+/* ------------------------------------------------------------------ */
+/* Bulk actions — Mark Done / Delete on several requests at once        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Applies "done" or "delete" to a list of request ids, one at a time,
+ * reusing the exact same per-item rules as the single-item actions above
+ * (markTicketDone / deleteTicketRecord) — a bad or unauthorized id is
+ * skipped and reported rather than aborting the whole batch, matching the
+ * CSV import's row-independent behaviour.
+ */
+async function bulkAction(req: Request, res: Response, viewer: Viewer): Promise<Response> {
+  const op = String(req.body?.op ?? '');
+  if (op !== 'done' && op !== 'delete') {
+    return res.status(400).json({ error: 'Unknown bulk action.' });
+  }
+
+  const rawIds: unknown[] = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids = [...new Set(rawIds.map((id) => String(id)).filter(Boolean))];
+  if (!ids.length) return res.status(400).json({ error: 'No requests selected.' });
+
+  const actor = { name: viewer.name, email: viewer.email };
+  const succeeded: string[] = [];
+  const failed: BulkActionResult['failed'] = [];
+
+  for (const id of ids) {
+    const ticket = await getTicket(id);
+    if (!ticket) {
+      failed.push({ id, reason: 'Not found.' });
+      continue;
+    }
+    const result =
+      op === 'delete'
+        ? await deleteTicketRecord(ticket, viewer, actor)
+        : await markTicketDone(ticket, viewer, actor);
+    if (result.ok) succeeded.push(id);
+    else failed.push({ id, reason: result.error });
+  }
+
+  return res.json({ succeeded, failed });
+}

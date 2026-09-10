@@ -1,5 +1,6 @@
 import type {
   AuditEntry,
+  BulkActionResult,
   FormSettings,
   FormValues,
   ImportResult,
@@ -8,6 +9,7 @@ import type {
   Role,
   StaffMember,
   Ticket,
+  TicketStatus,
   Viewer,
 } from '../shared/spec';
 
@@ -106,6 +108,19 @@ export const api = {
 
   deleteTicket: (id: string) =>
     request<{ ok: true }>(`/api/tickets?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /**
+   * Manually corrects a request's status (e.g. undo an accidental Mark
+   * Done). Administrators only — deliberately skips the normal workflow
+   * rules (like the campaign-date gate on Done), since it exists to undo a
+   * mistake those rules already let happen.
+   */
+  correctStatus: (id: string, status: TicketStatus) =>
+    post<{ ticket: Ticket }>('/api/tickets', { action: 'correctStatus', id, status }),
+
+  /** Marks Done or deletes several requests at once, one id at a time. */
+  bulkTickets: (op: 'done' | 'delete', ids: string[]) =>
+    post<BulkActionResult>('/api/tickets', { action: 'bulk', op, ids }),
 
   eligibility: (area: string) =>
     request<{ eligibility: RequestEligibility }>(
