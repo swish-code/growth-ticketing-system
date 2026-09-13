@@ -14,6 +14,8 @@ import type { Actor } from './tickets';
  *   SMTP_USER     mailbox username
  *   SMTP_PASS     mailbox password / app password
  *   MAIL_FROM     optional From header, defaults to SMTP_USER
+ *   MAIL_CC       optional, comma-separated — CC'd on every notification
+ *                 in addition to the requester/assignee/actor
  *   APP_URL       link target in the emails
  *
  * Sending is always fire-and-forget: a mail failure must never fail or slow
@@ -27,6 +29,10 @@ const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
 const fromAddress =
   process.env.MAIL_FROM ?? (smtpUser ? `Growth Department <${smtpUser}>` : undefined);
+const ccAddresses = (process.env.MAIL_CC ?? '')
+  .split(',')
+  .map((e) => e.trim())
+  .filter(Boolean);
 const appUrl = (
   process.env.APP_URL ?? 'https://growth-ticketing-system-production.up.railway.app'
 ).replace(/\/+$/, '');
@@ -188,18 +194,21 @@ export function notifyTicketEvent(
 
   const to = recipientsFor(ticket, actor);
   if (!to.length) return;
+  const cc = ccAddresses.filter((e) => !to.includes(e));
 
   const copy = copyFor(kind, ticket, actor, detail);
   transporter
     .sendMail({
       from: fromAddress,
       to,
+      ...(cc.length ? { cc } : {}),
       subject: copy.subject,
       text: `${copy.headline}\n\n${copy.line}\n\nRequest: ${ticket.id}\nTitle: ${ticket.title}\nTab: ${tabName(ticket.area)}\nBrand: ${ticket.brand}\nStatus: ${ticket.status}\n\n${appUrl}`,
       html: renderHtml(copy, ticket),
     })
     .then((info) => {
-      console.log(`[mail] ${kind} ${ticket.id} → ${to.join(', ')} (${info.messageId})`);
+      const ccNote = cc.length ? `, cc ${cc.join(', ')}` : '';
+      console.log(`[mail] ${kind} ${ticket.id} → ${to.join(', ')}${ccNote} (${info.messageId})`);
     })
     .catch((error) => {
       console.error(`[mail] failed to send ${kind} for ${ticket.id}:`, error);
