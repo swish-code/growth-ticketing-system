@@ -4,6 +4,7 @@ import {
   addDaysKey,
   minLeadDaysFor,
   primaryDateField,
+  ticketDateSpan,
   toDateKey,
   todayKey,
   type RequestEligibility,
@@ -110,10 +111,14 @@ export function TabCalendar({ user, tab, tickets, eligibility, onOpen, onCreateF
   const byDay = useMemo(() => {
     const map = new Map<string, Ticket[]>();
     for (const ticket of filtered) {
-      const key = basis === 'campaign' ? ticket.campaignDate : toDateKey(ticket.createdAt);
-      const list = map.get(key);
-      if (list) list.push(ticket);
-      else map.set(key, [ticket]);
+      // A multi-day campaign (Start/End Date) keeps appearing on every day
+      // it runs, not just the first — see ticketDateSpan().
+      const keys = basis === 'campaign' ? ticketDateSpan(ticket) : [toDateKey(ticket.createdAt)];
+      for (const key of keys) {
+        const list = map.get(key);
+        if (list) list.push(ticket);
+        else map.set(key, [ticket]);
+      }
     }
     for (const list of map.values()) list.sort((a, b) => a.id.localeCompare(b.id));
     return map;

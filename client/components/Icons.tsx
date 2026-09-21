@@ -101,6 +101,16 @@ export const IconExternal = (p: IconProps) =>
     p,
   );
 
+export const IconLayers = (p: IconProps) =>
+  svg(
+    <>
+      <path d="m12 3 8.5 4.7L12 12.4 3.5 7.7 12 3Z" />
+      <path d="m3.5 12 8.5 4.7 8.5-4.7" />
+      <path d="m3.5 16.3 8.5 4.7 8.5-4.7" />
+    </>,
+    p,
+  );
+
 export const IconShield = (p: IconProps) =>
   svg(
     <>
@@ -238,5 +248,6 @@ export const NAV_ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   'menu-updates': IconMenu,
   'menu-issues': IconIssue,
   'external-activities': IconExternal,
+  'aggregator-campaign': IconLayers,
   admin: IconShield,
 };

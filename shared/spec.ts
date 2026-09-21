@@ -415,6 +415,45 @@ export const TABS: TabDef[] = [
       { label: 'Notes', type: 'textarea', required: false, wide: true },
     ],
   },
+
+  /* ------------------------- Aggregator Campaign ----------------------- */
+  {
+    id: 'aggregator-campaign',
+    name: 'Aggregator Campaign',
+    prefix: 'AC',
+    fields: [
+      BRAND_FIELD,
+      {
+        label: 'Aggregator',
+        type: 'multi',
+        required: true,
+        options: [...CHANNELS, 'All Aggregators'],
+      },
+      { label: 'Campaign', type: 'text', required: true },
+      { label: 'Start Date', type: 'date', required: true, minDaysFromToday: 5 },
+      { label: 'End Date', type: 'date', required: true, mustBeAfter: 'Start Date' },
+      {
+        label: 'Digital Deliverables',
+        type: 'select',
+        required: true,
+        options: ['Not Started', 'In Progress', 'Received', 'Approved', 'Live', 'N/A'],
+      },
+      {
+        label: 'Campaign Status',
+        type: 'select',
+        required: true,
+        options: ['Confirmed', 'On Hold', 'Cancelled', 'In Progress', 'Live'],
+      },
+      {
+        label: 'Menu Images',
+        type: 'select',
+        required: true,
+        options: ['Confirmed', 'On Hold', 'Cancelled', 'In Progress', 'Live'],
+      },
+      { label: 'Co-fund Details', type: 'textarea', required: false, wide: true },
+      { label: 'Notes', type: 'textarea', required: false, wide: true },
+    ],
+  },
 ];
 
 export const TAB_IDS = TABS.map((t) => t.id);
@@ -642,6 +681,7 @@ export const COOLDOWN_DAYS_BY_AREA: Record<string, number> = {
   'menu-updates': 5,
   'menu-issues': 5,
   'external-activities': 5,
+  'aggregator-campaign': 5,
 };
 
 export function cooldownDaysFor(area: string): number {
@@ -814,6 +854,35 @@ export interface Ticket {
   createdAt: number;
   acceptedAt: number | null;
   completedAt: number | null;
+}
+
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Every day (YYYY-MM-DD, inclusive) a ticket's campaign covers on the
+ * calendar. Most tickets are a single day — their own campaign date. A
+ * ticket whose tab has an "End Date" field (Menu Updates, External
+ * Activities, Aggregator Campaign) spans every day from its campaign date
+ * (= Start Date, see CAMPAIGN_DATE_ORDER) through that End Date, so it keeps
+ * showing up on the calendar for the whole run instead of just the first day.
+ */
+export function ticketDateSpan(ticket: Pick<Ticket, 'campaignDate' | 'data'>): string[] {
+  const start = ticket.campaignDate;
+  const endRaw = ticket.data['End Date'];
+  if (typeof endRaw !== 'string' || !DATE_KEY_RE.test(endRaw) || endRaw <= start) {
+    return [start];
+  }
+
+  const days: string[] = [];
+  const cursor = new Date(`${start}T00:00:00`);
+  const end = new Date(`${endRaw}T00:00:00`);
+  // A guard against a malformed/absurd End Date turning this into a
+  // near-infinite loop — no real campaign runs longer than a year.
+  for (let i = 0; i < 366 && cursor <= end; i++) {
+    days.push(toDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
 }
 
 export interface AuditEntry {

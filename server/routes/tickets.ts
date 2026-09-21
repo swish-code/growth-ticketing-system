@@ -534,7 +534,10 @@ async function deleteTicketRecord(ticket: Ticket, viewer: Viewer, actor: Actor):
     ticket.id,
     ticket.area,
   );
-  notifyTicketEvent('deleted', ticket, actor);
+  // Email is deliberately skipped for deletions — the in-app Notification
+  // Center still records it, but a delete doesn't need to land in anyone's
+  // inbox (and bulk-deleting several requests would otherwise send one
+  // email per request).
   await fanOutNotification('deleted', ticket, actor);
   return { ok: true, ticket };
 }
