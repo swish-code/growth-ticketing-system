@@ -184,12 +184,16 @@ function recipientsFor(ticket: Ticket, actor: Actor): string[] {
  * Fire-and-forget notification to the requester, the assignee and the acting
  * staff member (deduplicated). Never throws.
  */
+/** Every other lifecycle event (accepted/declined/scheduled/updated/deleted) is deliberately silent — email only fires for a brand-new request and its completion. */
+const EMAIL_KINDS = new Set<TicketEventKind>(['created', 'done']);
+
 export function notifyTicketEvent(
   kind: TicketEventKind,
   ticket: Ticket,
   actor: Actor,
   detail?: string,
 ): void {
+  if (!EMAIL_KINDS.has(kind)) return;
   if (!mailEnabled || !transporter || !fromAddress) return;
 
   const to = recipientsFor(ticket, actor);

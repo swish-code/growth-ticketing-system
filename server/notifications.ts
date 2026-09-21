@@ -110,6 +110,15 @@ async function recipientsFor(kind: NotificationKind, ticket: Ticket, actor: Acto
  * run again before their audit/event write is confirmed. User-triggered
  * actions fire once per click and don't need one.
  */
+/**
+ * Every other lifecycle event (accepted/declined/scheduled/updated/deleted)
+ * is deliberately silent in the Notification Center too — only a brand-new
+ * request and its completion notify. SLA escalations are a distinct,
+ * admin-only safety net (spec: overdue work), not part of this — they stay
+ * on regardless of this list.
+ */
+const IN_APP_KINDS = new Set<NotificationKind>(['created', 'done', 'sla.acceptance', 'sla.completion']);
+
 export async function fanOutNotification(
   kind: NotificationKind,
   ticket: Ticket,
@@ -117,6 +126,8 @@ export async function fanOutNotification(
   detail?: string,
   stableId?: string,
 ): Promise<void> {
+  if (!IN_APP_KINDS.has(kind)) return;
+
   const recipients = await recipientsFor(kind, ticket, actor);
   if (!recipients.length) return;
 
