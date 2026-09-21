@@ -967,6 +967,38 @@ export function canSchedule(ticket: Pick<Ticket, 'area' | 'campaignDate'>, now =
   return !dateReached(ticket.campaignDate, now);
 }
 
+/* ------------------------------------------------------------------ */
+/* Aggregator Campaign — inline progress tracking (§ tracking fields)  */
+/*                                                                      */
+/* Digital Deliverables / Campaign Status / Menu Images are ordinary   */
+/* submitted fields, but staff update them repeatedly as work          */
+/* progresses (not once at submission), so they get their own quiet,   */
+/* audited-but-not-notified update path instead of going through the   */
+/* full "Edit request" flow. Once every one of them reaches its        */
+/* "complete" value, the request's own status auto-advances — see      */
+/* trackingFieldsComplete() and its server-side caller.                */
+/* ------------------------------------------------------------------ */
+
+/** Field label -> the value(s) that count as "done" for that field. */
+export const TRACKING_FIELD_COMPLETE: Record<string, string[]> = {
+  'Digital Deliverables': ['Live', 'N/A'],
+  'Campaign Status': ['Live'],
+  'Menu Images': ['Live'],
+};
+
+export const TRACKING_FIELDS = Object.keys(TRACKING_FIELD_COMPLETE);
+
+/** True only for a tab that actually has all the tracking fields (Aggregator Campaign today). */
+export function hasTrackingFields(tab: TabDef): boolean {
+  return TRACKING_FIELDS.every((label) => tab.fields.some((f) => f.label === label));
+}
+
+/** Every tracking field is at its "complete" value. */
+export function trackingFieldsComplete(tab: TabDef, data: FormValues): boolean {
+  if (!hasTrackingFields(tab)) return false;
+  return TRACKING_FIELDS.every((label) => TRACKING_FIELD_COMPLETE[label].includes(String(data[label] ?? '')));
+}
+
 /** "2026-08-23 10:35" — locale-independent, used in server error messages. */
 export function formatDateTimeIso(ms: number): string {
   const d = new Date(ms);

@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   MENU_ISSUES,
   STATUSES,
+  TRACKING_FIELDS,
   canManage,
   hasFormAccess,
   hasSubmissionAccess,
+  hasTrackingFields,
   toDateKey,
   type BulkActionResult,
   type RequestEligibility,
@@ -52,6 +54,8 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
   const [bulkError, setBulkError] = useState('');
+  const [trackingBusy, setTrackingBusy] = useState<Set<string>>(new Set());
+  const [trackingError, setTrackingError] = useState('');
 
   const aggregatorField = tab.fields.find((f) => f.label === 'Aggregator');
   const isMenuIssues = tab.id === MENU_ISSUES;
@@ -60,6 +64,33 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
   const canBulkDone = hasSubmissionAccess(user) && canManage(user, tab.id);
   const canBulkDelete = user.isAdmin;
   const canBulkSelect = canBulkDone || canBulkDelete;
+  const showTracking = hasTrackingFields(tab);
+  const canEditTrackingBase = hasSubmissionAccess(user) && canManage(user, tab.id);
+  const columnCount = 7 + (canBulkSelect ? 1 : 0) + (showTracking ? TRACKING_FIELDS.length : 0);
+
+  function canEditTrackingFor(ticket: Ticket): boolean {
+    if (!canEditTrackingBase) return false;
+    if (ticket.ownerEmail && ticket.ownerEmail !== user.email && !user.isAdmin) return false;
+    if (ticket.status === 'Done' || ticket.status === 'Declined') return false;
+    return true;
+  }
+
+  async function updateTrackingField(ticket: Ticket, label: string, value: string) {
+    setTrackingBusy((prev) => new Set(prev).add(ticket.id));
+    setTrackingError('');
+    try {
+      await api.updateTracking(ticket.id, { [label]: value });
+      onChanged();
+    } catch (err) {
+      setTrackingError(err instanceof ApiError ? err.message : 'Could not update the tracking field.');
+    } finally {
+      setTrackingBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(ticket.id);
+        return next;
+      });
+    }
+  }
 
   // A new tab, or the underlying ticket list changing shape, invalidates any
   // in-progress selection — safer than risking a stale id in a bulk request.
@@ -293,6 +324,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
       )}
 
       {bulkError && <p className="form-error">{bulkError}</p>}
+      {trackingError && <p className="form-error">{trackingError}</p>}
 
       {bulkResult && (
         <div className={`callout ${bulkResult.failed.length ? 'callout-danger' : ''}`}>
@@ -336,6 +368,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
               <th>{isMenuIssues ? 'Priority / SLA' : 'Campaign date'}</th>
               <th>Status</th>
               <th>Assignee</th>
+              {showTracking && TRACKING_FIELDS.map((label) => <th key={label}>{label}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -383,12 +416,38 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
                     <span className={statusClass(ticket.status)}>{ticket.status}</span>
                   </td>
                   <td>{displayValue(ticket.ownerEmail)}</td>
+                  {showTracking &&
+                    TRACKING_FIELDS.map((label) => {
+                      const field = tab.fields.find((f) => f.label === label);
+                      const value = String(ticket.data[label] ?? '');
+                      const editable = canEditTrackingFor(ticket);
+                      return (
+                        <td key={label} onClick={(e) => e.stopPropagation()}>
+                          {editable ? (
+                            <select
+                              value={value}
+                              disabled={trackingBusy.has(ticket.id)}
+                              onChange={(e) => updateTrackingField(ticket, label, e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {(field?.options ?? []).map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="muted small">{value || '—'}</span>
+                          )}
+                        </td>
+                      );
+                    })}
                 </tr>
               );
             })}
             {!filtered.length && (
               <tr>
-                <td colSpan={canBulkSelect ? 8 : 7} className="muted center">
+                <td colSpan={columnCount} className="muted center">
                   No requests match these filters.
                 </td>
               </tr>

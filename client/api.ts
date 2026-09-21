@@ -110,6 +110,14 @@ export const api = {
     request<{ ok: true }>(`/api/tickets?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   /**
+   * Updates one or more progress-tracking fields (Digital Deliverables /
+   * Campaign Status / Menu Images) without the notification a normal edit
+   * would send — see server/routes/tickets.ts's updateTracking.
+   */
+  updateTracking: (id: string, data: Record<string, string>) =>
+    post<{ ticket: Ticket }>('/api/tickets', { action: 'updateTracking', id, data }),
+
+  /**
    * Manually corrects a request's status (e.g. undo an accidental Mark
    * Done). Administrators only — deliberately skips the normal workflow
    * rules (like the campaign-date gate on Done), since it exists to undo a

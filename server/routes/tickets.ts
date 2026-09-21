@@ -11,9 +11,12 @@ import {
   getTab,
   hasFormAccess,
   hasSubmissionAccess,
+  hasTrackingFields,
   tabAccess,
   tabName,
   todayKey,
+  trackingFieldsComplete,
+  TRACKING_FIELDS,
   type BulkActionResult,
   type Ticket,
   type TicketStatus,
@@ -111,6 +114,7 @@ async function handleWrite(req: Request, res: Response): Promise<Response> {
     if (action === 'edit') return await editTicket(req, res, viewer);
     if (action === 'correctStatus') return await correctStatus(req, res, viewer);
     if (action === 'bulk') return await bulkAction(req, res, viewer);
+    if (action === 'updateTracking') return await updateTracking(req, res, viewer);
     return res.status(400).json({ error: 'Unknown action.' });
   } catch (error) {
     console.error('[tickets]', action, error);
@@ -304,6 +308,85 @@ async function correctStatus(req: Request, res: Response, viewer: Viewer): Promi
   return res.json({ ticket: corrected });
 }
 
+/**
+ * Updates one or more of a request's progress-tracking fields (Digital
+ * Deliverables / Campaign Status / Menu Images on Aggregator Campaign).
+ * Unlike every other update path, this one is deliberately QUIET — staff
+ * nudge these along repeatedly as work happens, and a notification per
+ * tweak would be spam. It's still fully audited, and once every tracking
+ * field reaches its "done" value the request itself advances (to Done if
+ * the campaign date has arrived, otherwise Scheduled so the usual
+ * date-arrival job finishes the job later) — and THAT transition notifies
+ * normally, same as if a person had clicked the button.
+ */
+async function updateTracking(req: Request, res: Response, viewer: Viewer): Promise<Response> {
+  const id = String(req.body?.id ?? '');
+  const ticket = await getTicket(id);
+  if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+
+  const tab = getTab(ticket.area);
+  if (!tab || !hasTrackingFields(tab)) {
+    return res.status(400).json({ error: 'This request has no tracking fields.' });
+  }
+  if (!hasSubmissionAccess(viewer)) {
+    return res.status(403).json({ error: 'Your role does not allow workflow actions.' });
+  }
+  if (!canManage(viewer, ticket.area)) {
+    return res.status(403).json({ error: 'You need Manage access on this tab.' });
+  }
+  if (!canUseBrand(viewer, ticket.brand)) {
+    return res.status(403).json({ error: 'You do not have access to this brand.' });
+  }
+  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+    return res.status(403).json({ error: `This request is assigned to ${ticket.ownerEmail}.` });
+  }
+  if (ticket.status === 'Done' || ticket.status === 'Declined') {
+    return res.status(409).json({ error: `This request is already ${ticket.status}.` });
+  }
+
+  const raw = req.body?.data;
+  if (!raw || typeof raw !== 'object') return res.status(400).json({ error: 'No fields to update.' });
+
+  const updates: Record<string, string> = {};
+  for (const label of TRACKING_FIELDS) {
+    if (!(label in raw)) continue;
+    const field = tab.fields.find((f) => f.label === label)!;
+    const value = String((raw as Record<string, unknown>)[label] ?? '');
+    if (!(field.options ?? []).includes(value)) {
+      return res.status(400).json({ error: `Invalid value for ${label}.` });
+    }
+    updates[label] = value;
+  }
+  if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update.' });
+
+  const before: Record<string, unknown> = {};
+  for (const key of Object.keys(updates)) before[key] = ticket.data[key];
+
+  const newData = { ...ticket.data, ...updates };
+  await query(`UPDATE tickets SET data = $2 WHERE id = $1`, [id, JSON.stringify(newData)]);
+
+  const actor = { name: viewer.name, email: viewer.email };
+  await writeAudit(id, 'Tracking updated', actor, { before, after: updates });
+  // No writeEvent / notifyTicketEvent / fanOutNotification here — deliberately
+  // silent, see the function doc comment above.
+
+  let finalTicket = await getTicket(id);
+  if (
+    finalTicket &&
+    (finalTicket.status === 'In progress' || finalTicket.status === 'Scheduled') &&
+    trackingFieldsComplete(tab, finalTicket.data)
+  ) {
+    const result = canMarkDone(finalTicket)
+      ? await markTicketDone(finalTicket, viewer, actor)
+      : finalTicket.status === 'In progress'
+        ? await scheduleTicket(finalTicket, viewer, actor)
+        : null;
+    if (result && result.ok) finalTicket = result.ticket;
+  }
+
+  return res.json({ ticket: finalTicket });
+}
+
 type WorkflowOp = 'accept' | 'decline' | 'schedule' | 'done' | 'notes';
 
 async function updateTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
@@ -396,37 +479,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
 
   /* ------------------------------ schedule ------------------------------ */
   if (op === 'schedule') {
-    if (ticket.area === MENU_ISSUES) {
-      return res.status(400).json({ error: 'Menu Issues cannot be scheduled.' });
-    }
-    if (ticket.status !== 'In progress') {
-      return res.status(409).json({ error: 'Only in-progress requests can be scheduled.' });
-    }
-    if (!canSchedule(ticket, now)) {
-      return res
-        .status(400)
-        .json({ error: 'The campaign date has arrived — mark the request Done instead.' });
-    }
-
-    await query(`UPDATE tickets SET status = 'Scheduled' WHERE id = $1`, [id]);
-    await writeAudit(id, 'Scheduled', actor, {
-      from: ticket.status,
-      to: 'Scheduled',
-      campaignDate: ticket.campaignDate,
-    });
-    await writeEvent(
-      'ticket.updated',
-      'Request scheduled',
-      `${tabName(ticket.area)} · ${id} · ${ticket.title} — completes on ${ticket.campaignDate}`,
-      id,
-      ticket.area,
-    );
-    const scheduled = await getTicket(id);
-    if (scheduled) {
-      notifyTicketEvent('scheduled', scheduled, actor);
-      await fanOutNotification('scheduled', scheduled, actor);
-    }
-    return res.json({ ticket: scheduled });
+    const result = await scheduleTicket(ticket, viewer, actor);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    return res.json({ ticket: result.ticket });
   }
 
   /* -------------------------------- done -------------------------------- */
@@ -520,6 +575,54 @@ async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
   notifyTicketEvent('done', completed, actor);
   await fanOutNotification('done', completed, actor);
   return { ok: true, ticket: completed };
+}
+
+/** The exact same rules as the "Schedule" workflow action (spec §15.4). */
+async function scheduleTicket(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
+  if (!hasSubmissionAccess(viewer)) {
+    return { ok: false, status: 403, error: 'Your role does not allow workflow actions.' };
+  }
+  if (!canManage(viewer, ticket.area)) {
+    return { ok: false, status: 403, error: 'You need Manage access on this tab.' };
+  }
+  if (!canUseBrand(viewer, ticket.brand)) {
+    return { ok: false, status: 403, error: 'You do not have access to this brand.' };
+  }
+  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+    return { ok: false, status: 403, error: `This request is assigned to ${ticket.ownerEmail}.` };
+  }
+  if (ticket.area === MENU_ISSUES) {
+    return { ok: false, status: 400, error: 'Menu Issues cannot be scheduled.' };
+  }
+  if (ticket.status !== 'In progress') {
+    return { ok: false, status: 409, error: 'Only in-progress requests can be scheduled.' };
+  }
+  if (!canSchedule(ticket)) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'The campaign date has arrived — mark the request Done instead.',
+    };
+  }
+
+  await query(`UPDATE tickets SET status = 'Scheduled' WHERE id = $1`, [ticket.id]);
+  await writeAudit(ticket.id, 'Scheduled', actor, {
+    from: ticket.status,
+    to: 'Scheduled',
+    campaignDate: ticket.campaignDate,
+  });
+  await writeEvent(
+    'ticket.updated',
+    'Request scheduled',
+    `${tabName(ticket.area)} · ${ticket.id} · ${ticket.title} — completes on ${ticket.campaignDate}`,
+    ticket.id,
+    ticket.area,
+  );
+  const scheduled = await getTicket(ticket.id);
+  if (!scheduled) return { ok: false, status: 500, error: 'Could not reload the request.' };
+  notifyTicketEvent('scheduled', scheduled, actor);
+  await fanOutNotification('scheduled', scheduled, actor);
+  return { ok: true, ticket: scheduled };
 }
 
 async function deleteTicketRecord(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {

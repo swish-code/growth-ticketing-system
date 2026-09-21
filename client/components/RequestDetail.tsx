@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import {
   MENU_ISSUES,
   STATUSES,
+  TRACKING_FIELDS,
   canManage,
   canMarkDone,
   dateReached,
   getTab,
   hasSubmissionAccess,
+  hasTrackingFields,
   processingTimeMs,
   tabName,
   type AuditEntry,
@@ -67,6 +69,21 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
   const lockedByOther =
     Boolean(ticket.ownerEmail) && ticket.ownerEmail !== user.email && !user.isAdmin;
   const canAct = manages && !lockedByOther;
+  const canEditTracking =
+    canAct && tab != null && hasTrackingFields(tab) && ticket.status !== 'Done' && ticket.status !== 'Declined';
+
+  async function updateTracking(label: string, value: string) {
+    setError('');
+    setBusy(true);
+    try {
+      await api.updateTracking(ticket.id, { [label]: value });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update the tracking field.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const campaignDateReached = dateReached(ticket.campaignDate);
   // No admin bypass: Done is unreachable before the campaign date for
@@ -225,13 +242,33 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
           <h3 className="section-title">Submitted details</h3>
           <dl className="detail-fields">
             {(tab?.fields ?? [])
-              .filter((field) => ticket.data[field.label] !== undefined)
-              .map((field) => (
-                <div key={field.label}>
-                  <dt>{field.label}</dt>
-                  <dd>{displayValue(ticket.data[field.label])}</dd>
-                </div>
-              ))}
+              .filter((field) => ticket.data[field.label] !== undefined || TRACKING_FIELDS.includes(field.label))
+              .map((field) => {
+                const isTracking = TRACKING_FIELDS.includes(field.label);
+                return (
+                  <div key={field.label}>
+                    <dt>{field.label}</dt>
+                    {isTracking && canEditTracking ? (
+                      <dd>
+                        <select
+                          value={String(ticket.data[field.label] ?? '')}
+                          disabled={busy}
+                          onChange={(e) => updateTracking(field.label, e.target.value)}
+                        >
+                          <option value="">—</option>
+                          {(field.options ?? []).map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </dd>
+                    ) : (
+                      <dd>{displayValue(ticket.data[field.label])}</dd>
+                    )}
+                  </div>
+                );
+              })}
           </dl>
 
           <h3 className="section-title">Staff notes</h3>
