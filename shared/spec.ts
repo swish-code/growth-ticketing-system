@@ -71,6 +71,13 @@ export interface TabDef {
   assigneeLabel?: string;
   /** In the LIST VIEW ONLY, show this field instead of the assignee column (e.g. "End Date") — the detail modal still shows the assignee. */
   listColumnInsteadOfAssignee?: string;
+  /**
+   * This tab's overall status auto-advances through an extra "Live" phase:
+   * Scheduled/In progress -> Live once the campaign date (Start Date)
+   * arrives, then -> Done once its End Date passes — instead of the
+   * single-date Scheduled -> Done job every other tab uses.
+   */
+  autoLiveLifecycle?: boolean;
   /** Done doesn't need the campaign date to have arrived (Menu Issues is exempt for a different reason — no date field at all — and doesn't need this). */
   noCampaignDateGate?: boolean;
 }
@@ -470,6 +477,7 @@ export const TABS: TabDef[] = [
     assigneeLabel: 'Handled by',
     noCampaignDateGate: true,
     listColumnInsteadOfAssignee: 'End Date',
+    autoLiveLifecycle: true,
   },
 ];
 
@@ -646,9 +654,12 @@ export interface ImportResult {
 /* Workflow (spec §15)                                                 */
 /* ------------------------------------------------------------------ */
 
-export type TicketStatus = 'New' | 'In progress' | 'Declined' | 'Scheduled' | 'Done';
+// "Live" only ever occurs on a tab with TabDef.autoLiveLifecycle (Aggregator
+// Campaign) — see processCampaignLifecycle() in server/tickets.ts. Every
+// other tab's tickets never reach it.
+export type TicketStatus = 'New' | 'In progress' | 'Declined' | 'Scheduled' | 'Live' | 'Done';
 
-export const STATUSES: TicketStatus[] = ['New', 'In progress', 'Declined', 'Scheduled', 'Done'];
+export const STATUSES: TicketStatus[] = ['New', 'In progress', 'Declined', 'Scheduled', 'Live', 'Done'];
 
 /** Statuses that no longer need staff action. */
 export const CLOSED_STATUSES: TicketStatus[] = ['Declined', 'Scheduled', 'Done'];

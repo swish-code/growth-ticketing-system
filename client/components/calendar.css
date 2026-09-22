@@ -139,6 +139,12 @@
 .chip-status-scheduled {
   --chip: var(--violet);
 }
+/* Same coral used by .badge-medium in styles.css, so "Live" reads
+   consistently wherever it shows up — this hue isn't used by any other
+   status, and stays the same value in light/dark like badge-medium's dot. */
+.chip-status-live {
+  --chip: #ec835a;
+}
 .chip-status-done {
   --chip: var(--good);
 }

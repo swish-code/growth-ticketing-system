@@ -373,7 +373,9 @@ async function updateTracking(req: Request, res: Response, viewer: Viewer): Prom
   let finalTicket = await getTicket(id);
   if (
     finalTicket &&
-    (finalTicket.status === 'In progress' || finalTicket.status === 'Scheduled') &&
+    (finalTicket.status === 'In progress' ||
+      finalTicket.status === 'Scheduled' ||
+      finalTicket.status === 'Live') &&
     trackingFieldsComplete(tab, finalTicket.data)
   ) {
     const result = canMarkDone(finalTicket)

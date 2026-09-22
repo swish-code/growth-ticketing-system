@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {
   ACCEPTANCE_SLA_MS,
   MENU_ISSUES,
+  TABS,
   tabName,
   todayKey,
   type AuditEntry,
@@ -177,14 +178,23 @@ export async function listAudit(ticketId: string): Promise<AuditEntry[]> {
  * worker). Converts due Scheduled tickets to Done and raises acceptance /
  * completion escalations exactly once per ticket and escalation type.
  */
+// Tabs that use processCampaignLifecycle()'s own Live/Done timing instead of
+// this file's single-date Scheduled -> Done job and completion-overdue SLA
+// (both keyed off campaign_date, which for these tabs is the Start Date —
+// exactly the date processCampaignLifecycle() treats as "now live", not
+// "now overdue").
+const LIFECYCLE_AREA_IDS = TABS.filter((t) => t.autoLiveLifecycle).map((t) => t.id);
+
 export async function processDueAndEscalations(): Promise<void> {
   const now = Date.now();
   const today = todayKey(now);
 
+  await processCampaignLifecycle(now, today);
+
   // 1. Scheduled requests whose campaign date has arrived become Done.
   const due = await query<TicketRow>(
-    `SELECT ${TICKET_COLUMNS} FROM tickets WHERE status = 'Scheduled' AND campaign_date <= $1`,
-    [today],
+    `SELECT ${TICKET_COLUMNS} FROM tickets WHERE status = 'Scheduled' AND campaign_date <= $1 AND area <> ALL($2)`,
+    [today, LIFECYCLE_AREA_IDS],
   );
 
   for (const row of due.rows) {
@@ -222,10 +232,13 @@ export async function processDueAndEscalations(): Promise<void> {
   }
 
   // 3. Completion SLA — campaign date passed while still open (spec §16.2).
+  // Excludes MENU_ISSUES (no campaign date at all) and lifecycle tabs (their
+  // campaign_date/Start Date passing means "now live", not "now overdue" —
+  // processCampaignLifecycle() above is what watches their End Date).
   const lateCompletion = await query<TicketRow>(
     `SELECT ${TICKET_COLUMNS} FROM tickets
-     WHERE status NOT IN ('Done', 'Declined') AND campaign_date < $1 AND area <> $2`,
-    [today, MENU_ISSUES],
+     WHERE status NOT IN ('Done', 'Declined') AND campaign_date < $1 AND area <> $2 AND area <> ALL($3)`,
+    [today, MENU_ISSUES, LIFECYCLE_AREA_IDS],
   );
   for (const row of lateCompletion.rows) {
     await raiseEscalation(row, 'completion', 'Completion overdue', 'campaign date has passed');
@@ -261,6 +274,74 @@ async function raiseEscalation(
     reason,
     `${stableId}-notif`,
   );
+}
+
+/**
+ * Drives the extra "Live" phase for TabDef.autoLiveLifecycle tabs (only
+ * Aggregator Campaign today): Scheduled/In progress -> Live once the
+ * campaign date (= Start Date) arrives, then -> Done once its End Date
+ * passes. Each ticket only ever needs one of the two checks per run — a
+ * ticket whose End Date has already passed goes straight to Done even if
+ * it never got to see the Live day in between (e.g. the app was down, or
+ * it's a backfilled record whose whole range is already in the past).
+ */
+async function processCampaignLifecycle(now: number, today: string): Promise<void> {
+  for (const areaId of LIFECYCLE_AREA_IDS) {
+    const result = await query<TicketRow>(
+      `SELECT ${TICKET_COLUMNS} FROM tickets WHERE area = $1 AND status IN ('Scheduled', 'In progress', 'Live')`,
+      [areaId],
+    );
+
+    for (const row of result.rows) {
+      const ticket = mapTicket(row);
+      const endRaw = ticket.data['End Date'];
+      const endDate = typeof endRaw === 'string' ? endRaw : null;
+
+      if (endDate && endDate <= today) {
+        await query(`UPDATE tickets SET status = 'Done', completed_at = $2 WHERE id = $1`, [
+          ticket.id,
+          now,
+        ]);
+        await writeAudit(
+          ticket.id,
+          'Automatically completed',
+          SYSTEM_ACTOR,
+          { from: ticket.status, to: 'Done', endDate },
+          `auto-ended-${ticket.id}`,
+        );
+        await writeEvent(
+          'ticket.updated',
+          'Campaign ended',
+          `${tabName(areaId)} · ${ticket.id} · ${ticket.title}`,
+          ticket.id,
+          areaId,
+          `auto-ended-event-${ticket.id}`,
+        );
+        const doneTicket = { ...ticket, status: 'Done' as const, completedAt: now };
+        notifyTicketEvent('done', doneTicket, SYSTEM_ACTOR);
+        await fanOutNotification('done', doneTicket, SYSTEM_ACTOR, undefined, `auto-ended-notif-${ticket.id}`);
+      } else if (ticket.status !== 'Live' && ticket.campaignDate <= today) {
+        // Live is silent — it's a routine progress update, not a milestone
+        // (spec: notifications restricted to created/done only).
+        await query(`UPDATE tickets SET status = 'Live' WHERE id = $1`, [ticket.id]);
+        await writeAudit(
+          ticket.id,
+          'Campaign went live',
+          SYSTEM_ACTOR,
+          { from: ticket.status, to: 'Live' },
+          `auto-live-${ticket.id}`,
+        );
+        await writeEvent(
+          'ticket.updated',
+          'Campaign went live',
+          `${tabName(areaId)} · ${ticket.id} · ${ticket.title}`,
+          ticket.id,
+          areaId,
+          `auto-live-event-${ticket.id}`,
+        );
+      }
+    }
+  }
 }
 
 // canMarkDone / canSchedule live in shared/spec.ts — the client needs the

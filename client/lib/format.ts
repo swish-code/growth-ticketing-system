@@ -59,6 +59,8 @@ export function statusClass(status: string): string {
       return 'badge badge-progress';
     case 'Scheduled':
       return 'badge badge-scheduled';
+    case 'Live':
+      return 'badge badge-medium';
     case 'Done':
       return 'badge badge-done';
     case 'Declined':

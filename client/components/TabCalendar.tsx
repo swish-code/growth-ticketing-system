@@ -12,7 +12,7 @@ import {
   type Ticket,
 } from '../../shared/spec';
 import type { AppUser } from '../api';
-import { eligibilitySummary, formatDateKey } from '../lib/format';
+import { eligibilitySummary, formatDateKey, statusClass } from '../lib/format';
 import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPlus } from './Icons';
 import './calendar.css';
 import './eligibility.css';
@@ -35,6 +35,7 @@ const STATUS_CHIP: Record<string, string> = {
   New: 'chip-status-new',
   'In progress': 'chip-status-progress',
   Scheduled: 'chip-status-scheduled',
+  Live: 'chip-status-live',
   Done: 'chip-status-done',
   Declined: 'chip-status-declined',
 };
@@ -297,9 +298,7 @@ export function TabCalendar({ user, tab, tickets, eligibility, onOpen, onCreateF
                       <span className="cell-id">{ticket.id}</span>
                       <span className="cal-row-title">{ticket.title}</span>
                       <span
-                        className={`badge badge-${
-                          ticket.status === 'In progress' ? 'progress' : ticket.status.toLowerCase()
-                        }`}
+                        className={statusClass(ticket.status)}
                       >
                         {ticket.status}
                       </span>
