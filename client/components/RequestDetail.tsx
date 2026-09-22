@@ -70,8 +70,14 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
 
   const manages = hasSubmissionAccess(user) && canManage(user, ticket.area);
   const lockedByOther =
+    !tab?.noOwnershipLock &&
     Boolean(ticket.ownerEmail) && ticket.ownerEmail !== user.email && !user.isAdmin;
   const canAct = manages && !lockedByOther;
+  // No Accept step on a no-ownership-lock tab — Schedule/Done act on New
+  // requests the same as In progress ones (new requests there start In
+  // progress already; this also covers any pre-existing New request).
+  const actsAsInProgress =
+    ticket.status === 'In progress' || (Boolean(tab?.noOwnershipLock) && ticket.status === 'New');
   const canEditTracking =
     canAct && tab != null && hasTrackingFields(tab) && ticket.status !== 'Done' && ticket.status !== 'Declined';
 
@@ -319,7 +325,7 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
 
           {canAct && (
             <div className="actions-row">
-              {ticket.status === 'New' && (
+              {ticket.status === 'New' && !tab?.noOwnershipLock && (
                 <button className="btn btn-primary" disabled={busy} onClick={() => run('accept')}>
                   Accept & assign to me
                 </button>
@@ -333,14 +339,14 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
                   Decline
                 </button>
               )}
-              {ticket.status === 'In progress' &&
+              {actsAsInProgress &&
                 ticket.area !== MENU_ISSUES &&
                 !campaignDateReached && (
                   <button className="btn" disabled={busy} onClick={() => run('schedule')}>
                     Schedule for {formatDateKey(ticket.campaignDate)}
                   </button>
                 )}
-              {(ticket.status === 'In progress' || ticket.status === 'Scheduled') && (
+              {(actsAsInProgress || ticket.status === 'Scheduled') && (
                 <button
                   className="btn btn-success"
                   disabled={busy || !doneAvailable}

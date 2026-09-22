@@ -76,7 +76,9 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
 
   function canEditTrackingFor(ticket: Ticket): boolean {
     if (!canEditTrackingBase) return false;
-    if (ticket.ownerEmail && ticket.ownerEmail !== user.email && !user.isAdmin) return false;
+    if (!tab.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== user.email && !user.isAdmin) {
+      return false;
+    }
     if (ticket.status === 'Done' || ticket.status === 'Declined') return false;
     return true;
   }

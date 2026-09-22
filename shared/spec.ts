@@ -80,6 +80,15 @@ export interface TabDef {
   autoLiveLifecycle?: boolean;
   /** Done doesn't need the campaign date to have arrived (Menu Issues is exempt for a different reason — no date field at all — and doesn't need this). */
   noCampaignDateGate?: boolean;
+  /**
+   * No "Accept & assign to me" step and no ownership lock — any team member
+   * with Manage access on this tab can act on a request at any time, instead
+   * of one person claiming it first. Requests start directly at "In
+   * progress" (there's nothing to Accept). The assignee field/column keeps
+   * showing under assigneeLabel, but it now just tracks whoever last touched
+   * the request rather than who "owns" it.
+   */
+  noOwnershipLock?: boolean;
 }
 
 const BRAND_FIELD: FieldDef = {
@@ -478,6 +487,7 @@ export const TABS: TabDef[] = [
     noCampaignDateGate: true,
     listColumnInsteadOfAssignee: 'End Date',
     autoLiveLifecycle: true,
+    noOwnershipLock: true,
   },
 ];
 

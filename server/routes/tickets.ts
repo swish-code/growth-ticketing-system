@@ -168,13 +168,17 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   const id = `${tab.prefix}-${String(number).padStart(6, '0')}`;
   const title = deriveTitle(values);
   const campaignDate = deriveCampaignDate(values, todayKey(now));
+  // Tabs with no ownership lock (TabDef.noOwnershipLock) have no "Accept &
+  // assign to me" step for anyone to move it past New, so it starts already
+  // actionable by the whole team.
+  const initialStatus: TicketStatus = tab.noOwnershipLock ? 'In progress' : 'New';
 
   await query(
     `INSERT INTO tickets
        (id, area, brand, title, campaign_date, status, owner_email, requester_email,
         requester_name, data, notes, decline_reason, created_at)
-     VALUES ($1, $2, $3, $4, $5, 'New', NULL, $6, $7, $8, '', '', $9)`,
-    [id, area, brand, title, campaignDate, viewer.email, viewer.name, JSON.stringify(values), now],
+     VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9, '', '', $10)`,
+    [id, area, brand, title, campaignDate, initialStatus, viewer.email, viewer.name, JSON.stringify(values), now],
   );
 
   await writeAudit(id, 'Request created', { name: viewer.name, email: viewer.email }, {
@@ -337,7 +341,7 @@ async function updateTracking(req: Request, res: Response, viewer: Viewer): Prom
   if (!canUseBrand(viewer, ticket.brand)) {
     return res.status(403).json({ error: 'You do not have access to this brand.' });
   }
-  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+  if (!tab.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
     return res.status(403).json({ error: `This request is assigned to ${ticket.ownerEmail}.` });
   }
   if (ticket.status === 'Done' || ticket.status === 'Declined') {
@@ -364,6 +368,7 @@ async function updateTracking(req: Request, res: Response, viewer: Viewer): Prom
 
   const newData = { ...ticket.data, ...updates };
   await query(`UPDATE tickets SET data = $2 WHERE id = $1`, [id, JSON.stringify(newData)]);
+  await touchHandledBy(id, tab, viewer);
 
   const actor = { name: viewer.name, email: viewer.email };
   await writeAudit(id, 'Tracking updated', actor, { before, after: updates });
@@ -397,6 +402,7 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
 
   const ticket = await getTicket(id);
   if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+  const tab = getTab(ticket.area);
 
   if (!hasSubmissionAccess(viewer)) {
     return res.status(403).json({ error: 'Your role does not allow workflow actions.' });
@@ -443,8 +449,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
     return res.json({ ticket: accepted });
   }
 
-  // Every other action respects the assignment lock (spec §15.3).
-  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+  // Every other action respects the assignment lock (spec §15.3) — except on
+  // tabs with TabDef.noOwnershipLock, where anyone with Manage access can act.
+  if (!tab?.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
     return res.status(403).json({
       error: `This request is assigned to ${ticket.ownerEmail}.`,
     });
@@ -463,6 +470,7 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
        WHERE id = $1`,
       [id, reason, viewer.email],
     );
+    await touchHandledBy(id, tab, viewer);
     await writeAudit(id, 'Declined', actor, { from: ticket.status, to: 'Declined', reason });
     await writeEvent(
       'ticket.updated',
@@ -497,6 +505,7 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
   if (op === 'notes') {
     const notes = String(req.body?.notes ?? '');
     await query(`UPDATE tickets SET notes = $2 WHERE id = $1`, [id, notes]);
+    await touchHandledBy(id, tab, viewer);
     await writeAudit(id, 'Staff notes updated', actor, { from: ticket.notes, to: notes });
     await writeEvent(
       'ticket.updated',
@@ -532,8 +541,20 @@ interface ActionFail {
 }
 type ActionResult = ActionOk | ActionFail;
 
+/**
+ * On a tab with TabDef.noOwnershipLock (Aggregator Campaign), nobody ever
+ * claims a request via Accept — instead "Handled by" simply tracks whoever
+ * last touched it, refreshed on every workflow action. No-op on every other
+ * tab, which keeps the normal Accept-then-lock ownership model.
+ */
+async function touchHandledBy(id: string, tab: ReturnType<typeof getTab>, viewer: Viewer): Promise<void> {
+  if (!tab?.noOwnershipLock) return;
+  await query(`UPDATE tickets SET owner_email = $2 WHERE id = $1`, [id, viewer.email]);
+}
+
 /** The exact same rules as the "Mark Done" workflow action (spec §15.5). */
 async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
+  const tab = getTab(ticket.area);
   if (!hasSubmissionAccess(viewer)) {
     return { ok: false, status: 403, error: 'Your role does not allow workflow actions.' };
   }
@@ -543,7 +564,7 @@ async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
   if (!canUseBrand(viewer, ticket.brand)) {
     return { ok: false, status: 403, error: 'You do not have access to this brand.' };
   }
-  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+  if (!tab?.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
     return { ok: false, status: 403, error: `This request is assigned to ${ticket.ownerEmail}.` };
   }
   if (ticket.status === 'Done') return { ok: false, status: 409, error: 'Already completed.' };
@@ -564,6 +585,7 @@ async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
      WHERE id = $1`,
     [ticket.id, now, viewer.email],
   );
+  await touchHandledBy(ticket.id, tab, viewer);
   await writeAudit(ticket.id, 'Completed', actor, { from: ticket.status, to: 'Done' });
   await writeEvent(
     'ticket.updated',
@@ -581,6 +603,7 @@ async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
 
 /** The exact same rules as the "Schedule" workflow action (spec §15.4). */
 async function scheduleTicket(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
+  const tab = getTab(ticket.area);
   if (!hasSubmissionAccess(viewer)) {
     return { ok: false, status: 403, error: 'Your role does not allow workflow actions.' };
   }
@@ -590,13 +613,16 @@ async function scheduleTicket(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
   if (!canUseBrand(viewer, ticket.brand)) {
     return { ok: false, status: 403, error: 'You do not have access to this brand.' };
   }
-  if (ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
+  if (!tab?.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
     return { ok: false, status: 403, error: `This request is assigned to ${ticket.ownerEmail}.` };
   }
   if (ticket.area === MENU_ISSUES) {
     return { ok: false, status: 400, error: 'Menu Issues cannot be scheduled.' };
   }
-  if (ticket.status !== 'In progress') {
+  // A no-ownership-lock tab has no Accept step, so a pre-existing New request
+  // (from before this tab adopted noOwnershipLock) is just as schedulable as
+  // an In progress one.
+  if (ticket.status !== 'In progress' && !(tab?.noOwnershipLock && ticket.status === 'New')) {
     return { ok: false, status: 409, error: 'Only in-progress requests can be scheduled.' };
   }
   if (!canSchedule(ticket)) {
@@ -608,6 +634,7 @@ async function scheduleTicket(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
   }
 
   await query(`UPDATE tickets SET status = 'Scheduled' WHERE id = $1`, [ticket.id]);
+  await touchHandledBy(ticket.id, tab, viewer);
   await writeAudit(ticket.id, 'Scheduled', actor, {
     from: ticket.status,
     to: 'Scheduled',
