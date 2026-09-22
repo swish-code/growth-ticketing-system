@@ -143,14 +143,29 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Same display rule as the client's displayValue() — array joined, blank/missing shows a dash. */
+function fieldDisplayValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(', ');
+  if (value === undefined || value === null || value === '') return '—';
+  return String(value);
+}
+
 function renderHtml(copy: EventCopy, ticket: Ticket): string {
-  const noun = entityNounFor(getTab(ticket.area));
+  const tab = getTab(ticket.area);
+  const noun = entityNounFor(tab);
   const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   const fact = (label: string, value: string) => `
     <tr>
-      <td style="padding:6px 14px 6px 0;color:#7d71a3;font-size:12px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">${label}</td>
+      <td style="padding:6px 14px 6px 0;color:#7d71a3;font-size:12px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;vertical-align:top;">${label}</td>
       <td style="padding:6px 0;color:#221540;font-size:14px;font-weight:600;">${escapeHtml(value)}</td>
     </tr>`;
+
+  // Every submitted field, not just the fixed meta facts — Brand is skipped
+  // here since it's already shown above.
+  const fieldFacts = (tab?.fields ?? [])
+    .filter((field) => field.label !== 'Brand' && ticket.data[field.label] !== undefined)
+    .map((field) => fact(field.label, fieldDisplayValue(ticket.data[field.label])))
+    .join('');
 
   return `
   <div style="margin:0;padding:24px;background:#f4f2fd;font-family:'Segoe UI',system-ui,Arial,sans-serif;">
@@ -168,6 +183,7 @@ function renderHtml(copy: EventCopy, ticket: Ticket): string {
           ${fact('Tab', tabName(ticket.area))}
           ${fact('Brand', ticket.brand)}
           ${fact('Status', ticket.status)}
+          ${fieldFacts}
         </table>
         <a href="${appUrl}"
            style="display:inline-block;padding:10px 22px;border-radius:999px;background:#6d28d9;color:#ffffff;font-size:13.5px;font-weight:700;text-decoration:none;">
@@ -211,15 +227,20 @@ export function notifyTicketEvent(
   const cc = ccAddresses.filter((e) => !to.includes(e));
 
   const copy = copyFor(kind, ticket, actor, detail);
-  const noun = entityNounFor(getTab(ticket.area));
+  const tab = getTab(ticket.area);
+  const noun = entityNounFor(tab);
   const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
+  const fieldLines = (tab?.fields ?? [])
+    .filter((field) => field.label !== 'Brand' && ticket.data[field.label] !== undefined)
+    .map((field) => `${field.label}: ${fieldDisplayValue(ticket.data[field.label])}`)
+    .join('\n');
   transporter
     .sendMail({
       from: fromAddress,
       to,
       ...(cc.length ? { cc } : {}),
       subject: copy.subject,
-      text: `${copy.headline}\n\n${copy.line}\n\n${Noun}: ${ticket.id}\nTitle: ${ticket.title}\nTab: ${tabName(ticket.area)}\nBrand: ${ticket.brand}\nStatus: ${ticket.status}\n\n${appUrl}`,
+      text: `${copy.headline}\n\n${copy.line}\n\n${Noun}: ${ticket.id}\nTitle: ${ticket.title}\nTab: ${tabName(ticket.area)}\nBrand: ${ticket.brand}\nStatus: ${ticket.status}${fieldLines ? `\n${fieldLines}` : ''}\n\n${appUrl}`,
       html: renderHtml(copy, ticket),
     })
     .then((info) => {
