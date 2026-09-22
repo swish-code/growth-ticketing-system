@@ -69,6 +69,8 @@ export interface TabDef {
   entityNoun?: string;
   /** Column/label text for the assignee concept in this tab's UI. Defaults to "Assignee". */
   assigneeLabel?: string;
+  /** In the LIST VIEW ONLY, show this field instead of the assignee column (e.g. "End Date") — the detail modal still shows the assignee. */
+  listColumnInsteadOfAssignee?: string;
   /** Done doesn't need the campaign date to have arrived (Menu Issues is exempt for a different reason — no date field at all — and doesn't need this). */
   noCampaignDateGate?: boolean;
 }
@@ -467,6 +469,7 @@ export const TABS: TabDef[] = [
     entityNoun: 'campaign',
     assigneeLabel: 'Handled by',
     noCampaignDateGate: true,
+    listColumnInsteadOfAssignee: 'End Date',
   },
 ];
 

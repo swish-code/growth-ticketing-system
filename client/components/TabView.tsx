@@ -70,6 +70,9 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
   const showTracking = hasTrackingFields(tab);
   const canEditTrackingBase = hasSubmissionAccess(user) && canManage(user, tab.id);
   const columnCount = 7 + (canBulkSelect ? 1 : 0) + (showTracking ? TRACKING_FIELDS.length : 0);
+  const assigneeColumnField = tab.listColumnInsteadOfAssignee
+    ? tab.fields.find((f) => f.label === tab.listColumnInsteadOfAssignee)
+    : undefined;
 
   function canEditTrackingFor(ticket: Ticket): boolean {
     if (!canEditTrackingBase) return false;
@@ -370,7 +373,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
               <th>Submitted</th>
               <th>{isMenuIssues ? 'Priority / SLA' : 'Campaign date'}</th>
               <th>Status</th>
-              <th>{assigneeLabelFor(tab)}</th>
+              <th>{assigneeColumnField ? assigneeColumnField.label : assigneeLabelFor(tab)}</th>
               {showTracking && TRACKING_FIELDS.map((label) => <th key={label}>{label}</th>)}
             </tr>
           </thead>
@@ -418,7 +421,17 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
                   <td>
                     <span className={statusClass(ticket.status)}>{ticket.status}</span>
                   </td>
-                  <td>{displayValue(ticket.ownerEmail)}</td>
+                  <td>
+                    {assigneeColumnField
+                      ? assigneeColumnField.type === 'date'
+                        ? displayValue(
+                            ticket.data[assigneeColumnField.label]
+                              ? formatDateKey(String(ticket.data[assigneeColumnField.label]))
+                              : undefined,
+                          )
+                        : displayValue(ticket.data[assigneeColumnField.label])
+                      : displayValue(ticket.ownerEmail)}
+                  </td>
                   {showTracking &&
                     TRACKING_FIELDS.map((label) => {
                       const field = tab.fields.find((f) => f.label === label);
