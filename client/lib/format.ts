@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import {
   MENU_ISSUES,
   csvColumnsFor,
@@ -79,6 +80,40 @@ export function priorityClass(priority: string): string {
       return 'badge';
   }
 }
+
+/**
+ * Reuses the existing status-badge pill + dot (already dark-mode-aware) for
+ * Aggregator Campaign's tracking-field values: green once a field reads
+ * Live, amber while it's In Progress, red once it's blocked (On Hold /
+ * Cancelled), and the neutral badge tone for everything else — always a
+ * full "badge badge-X" pair, never empty, so there's always a dot+pill.
+ */
+export function trackingToneClass(value: string): string {
+  switch (value) {
+    case 'Live':
+      return 'badge badge-done';
+    case 'In Progress':
+      return 'badge badge-progress';
+    case 'On Hold':
+    case 'Cancelled':
+      return 'badge badge-declined';
+    default:
+      return 'badge';
+  }
+}
+
+/**
+ * A <select> nested inside a trackingToneClass span, made to look like part
+ * of the pill (transparent, borderless, inherits the badge's text colour)
+ * instead of a normal boxed dropdown.
+ */
+export const TRACKING_SELECT_STYLE: CSSProperties = {
+  background: 'transparent',
+  color: 'inherit',
+  border: 'none',
+  font: 'inherit',
+  padding: 0,
+};
 
 /* -------------------------- Menu Issues SLA --------------------------- */
 

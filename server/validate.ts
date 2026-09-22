@@ -91,6 +91,12 @@ export function validateSubmission(
           return { error: `${field.label} must be after ${field.mustBeAfter}.` };
         }
       }
+      if (field.mustBeOnOrAfter) {
+        const other = values[field.mustBeOnOrAfter];
+        if (typeof other === 'string' && other && date < other) {
+          return { error: `${field.label} must be on or after ${field.mustBeOnOrAfter}.` };
+        }
+      }
     }
   }
 

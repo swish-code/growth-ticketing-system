@@ -3,6 +3,7 @@ import {
   MENU_ISSUES,
   STATUSES,
   TRACKING_FIELDS,
+  assigneeLabelFor,
   canManage,
   canMarkDone,
   dateReached,
@@ -18,6 +19,7 @@ import {
 import { ApiError, api, type AppUser } from '../api';
 import { IconClose } from './Icons';
 import {
+  TRACKING_SELECT_STYLE,
   displayValue,
   formatDateKey,
   formatDateTime,
@@ -25,6 +27,7 @@ import {
   menuIssueSla,
   priorityClass,
   statusClass,
+  trackingToneClass,
 } from '../lib/format';
 
 interface Props {
@@ -185,7 +188,7 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
               <strong>{formatDateTime(ticket.createdAt)}</strong>
             </div>
             <div>
-              <span className="label">Assignee</span>
+              <span className="label">{assigneeLabelFor(tab)}</span>
               <strong>{ticket.ownerEmail ?? 'Unassigned'}</strong>
             </div>
             {sla ? (
@@ -250,18 +253,27 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
                     <dt>{field.label}</dt>
                     {isTracking && canEditTracking ? (
                       <dd>
-                        <select
-                          value={String(ticket.data[field.label] ?? '')}
-                          disabled={busy}
-                          onChange={(e) => updateTracking(field.label, e.target.value)}
-                        >
-                          <option value="">—</option>
-                          {(field.options ?? []).map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
+                        <span className={trackingToneClass(String(ticket.data[field.label] ?? ''))}>
+                          <select
+                            value={String(ticket.data[field.label] ?? '')}
+                            disabled={busy}
+                            onChange={(e) => updateTracking(field.label, e.target.value)}
+                            style={TRACKING_SELECT_STYLE}
+                          >
+                            <option value="">—</option>
+                            {(field.options ?? []).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                      </dd>
+                    ) : isTracking && ticket.data[field.label] ? (
+                      <dd>
+                        <span className={trackingToneClass(String(ticket.data[field.label]))}>
+                          {String(ticket.data[field.label])}
+                        </span>
                       </dd>
                     ) : (
                       <dd>{displayValue(ticket.data[field.label])}</dd>

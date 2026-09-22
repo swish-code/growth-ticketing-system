@@ -118,6 +118,10 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
         return next.toISOString().slice(0, 10);
       }
     }
+    if (field.mustBeOnOrAfter) {
+      const start = values[field.mustBeOnOrAfter];
+      if (typeof start === 'string' && start) return start;
+    }
     return isEditing ? undefined : earliestDateFor(field);
   }
 

@@ -49,6 +49,8 @@ export interface FieldDef {
   minDaysFromToday?: number;
   /** This date field must be strictly after the referenced date field. */
   mustBeAfter?: string;
+  /** This date field must be on or after the referenced date field (same day allowed) — for a tab whose date range can be a single day. */
+  mustBeOnOrAfter?: string;
   /** Selecting this option reveals a free-text input for a custom value. */
   customOption?: string;
   /** Conditional visibility (Menu Updates). */
@@ -63,6 +65,12 @@ export interface TabDef {
   /** Request-ID prefix (spec §14). */
   prefix: string;
   fields: FieldDef[];
+  /** What to call a request from this tab in prose (emails). Defaults to "request". */
+  entityNoun?: string;
+  /** Column/label text for the assignee concept in this tab's UI. Defaults to "Assignee". */
+  assigneeLabel?: string;
+  /** Done doesn't need the campaign date to have arrived (Menu Issues is exempt for a different reason — no date field at all — and doesn't need this). */
+  noCampaignDateGate?: boolean;
 }
 
 const BRAND_FIELD: FieldDef = {
@@ -430,8 +438,11 @@ export const TABS: TabDef[] = [
         options: [...CHANNELS, 'All Aggregators'],
       },
       { label: 'Campaign', type: 'text', required: true },
-      { label: 'Start Date', type: 'date', required: true, minDaysFromToday: 5 },
-      { label: 'End Date', type: 'date', required: true, mustBeAfter: 'Start Date' },
+      // No minimum lead time and same-day End Date allowed — unlike the
+      // other tabs' forward-looking requests, this one also tracks
+      // campaigns that already started (or are a single day).
+      { label: 'Start Date', type: 'date', required: true },
+      { label: 'End Date', type: 'date', required: true, mustBeOnOrAfter: 'Start Date' },
       {
         label: 'Digital Deliverables',
         type: 'select',
@@ -453,6 +464,9 @@ export const TABS: TabDef[] = [
       { label: 'Co-fund Details', type: 'textarea', required: false, wide: true },
       { label: 'Notes', type: 'textarea', required: false, wide: true },
     ],
+    entityNoun: 'campaign',
+    assigneeLabel: 'Handled by',
+    noCampaignDateGate: true,
   },
 ];
 
@@ -464,6 +478,16 @@ export function getTab(area: string): TabDef | undefined {
 
 export function tabName(area: string): string {
   return getTab(area)?.name ?? area;
+}
+
+/** What to call a request from this tab in prose — "request" unless the tab says otherwise. */
+export function entityNounFor(tab: TabDef | undefined): string {
+  return tab?.entityNoun ?? 'request';
+}
+
+/** Column/label text for the assignee concept — "Assignee" unless the tab says otherwise. */
+export function assigneeLabelFor(tab: TabDef | undefined): string {
+  return tab?.assigneeLabel ?? 'Assignee';
 }
 
 /** Menu Issues is the only tab without campaign-date / schedule handling (§12.1). */
@@ -953,11 +977,14 @@ export function dateReached(campaignDate: string, now = Date.now()): boolean {
 /* Done becomes available — a ticket CANNOT be marked Done before its  */
 /* campaign date, for anyone, administrators included. Only Menu       */
 /* Issues (which has no campaign date at all) is exempt. Before the    */
-/* date, the only closing action available is Scheduled.               */
+/* date, the only closing action available is Scheduled. A tab can opt */
+/* out of the gate entirely via TabDef.noCampaignDateGate (Aggregator  */
+/* Campaign — a tracker that's fine being closed out any time).        */
 /* ------------------------------------------------------------------ */
 
 export function canMarkDone(ticket: Pick<Ticket, 'area' | 'campaignDate'>, now = Date.now()): boolean {
   if (ticket.area === MENU_ISSUES) return true;
+  if (getTab(ticket.area)?.noCampaignDateGate) return true;
   return dateReached(ticket.campaignDate, now);
 }
 

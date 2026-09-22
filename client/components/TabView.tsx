@@ -3,6 +3,7 @@ import {
   MENU_ISSUES,
   STATUSES,
   TRACKING_FIELDS,
+  assigneeLabelFor,
   canManage,
   hasFormAccess,
   hasSubmissionAccess,
@@ -15,6 +16,7 @@ import {
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
 import {
+  TRACKING_SELECT_STYLE,
   displayValue,
   exportCsv,
   formatDateKey,
@@ -23,6 +25,7 @@ import {
   menuIssueSla,
   priorityClass,
   statusClass,
+  trackingToneClass,
 } from '../lib/format';
 import { EligibilityBanner } from './EligibilityBanner';
 import { IconCalendar, IconDownload, IconPlus, IconTasks } from './Icons';
@@ -367,7 +370,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
               <th>Submitted</th>
               <th>{isMenuIssues ? 'Priority / SLA' : 'Campaign date'}</th>
               <th>Status</th>
-              <th>Assignee</th>
+              <th>{assigneeLabelFor(tab)}</th>
               {showTracking && TRACKING_FIELDS.map((label) => <th key={label}>{label}</th>)}
             </tr>
           </thead>
@@ -424,20 +427,25 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
                       return (
                         <td key={label} onClick={(e) => e.stopPropagation()}>
                           {editable ? (
-                            <select
-                              value={value}
-                              disabled={trackingBusy.has(ticket.id)}
-                              onChange={(e) => updateTrackingField(ticket, label, e.target.value)}
-                            >
-                              <option value="">—</option>
-                              {(field?.options ?? []).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
+                            <span className={trackingToneClass(value)}>
+                              <select
+                                value={value}
+                                disabled={trackingBusy.has(ticket.id)}
+                                onChange={(e) => updateTrackingField(ticket, label, e.target.value)}
+                                style={TRACKING_SELECT_STYLE}
+                              >
+                                <option value="">—</option>
+                                {(field?.options ?? []).map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          ) : value ? (
+                            <span className={trackingToneClass(value)}>{value}</span>
                           ) : (
-                            <span className="muted small">{value || '—'}</span>
+                            <span className="muted small">—</span>
                           )}
                         </td>
                       );

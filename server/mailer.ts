@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { tabName, type Ticket } from '../shared/spec';
+import { entityNounFor, getTab, tabName, type Ticket } from '../shared/spec';
 import type { Actor } from './tickets';
 
 /**
@@ -79,49 +79,57 @@ function copyFor(kind: TicketEventKind, ticket: Ticket, actor: Actor, detail?: s
   const id = ticket.id;
   const title = ticket.title;
   const by = actor.email === 'system' ? 'the system' : `${actor.name} (${actor.email})`;
+  // A tab can call itself something other than "request" in prose (Aggregator
+  // Campaign → "campaign") — it reads as a tracking log, not a ticket queue,
+  // so the wording shouldn't push accept/decline/assignee urgency either.
+  const noun = entityNounFor(getTab(ticket.area));
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
+  const isTracker = noun !== 'request';
 
   switch (kind) {
     case 'created':
       return {
-        subject: `New request ${id} — ${title}`,
-        headline: 'A new request was submitted',
-        line: `${id} was submitted by ${by} and is waiting to be accepted.`,
+        subject: `New ${noun} ${id} — ${title}`,
+        headline: `A new ${noun} was submitted`,
+        line: isTracker
+          ? `${id} was submitted by ${by}.`
+          : `${id} was submitted by ${by} and is waiting to be accepted.`,
       };
     case 'accepted':
       return {
         subject: `${id} accepted — ${title}`,
-        headline: 'Request accepted',
+        headline: `${Noun} accepted`,
         line: `${id} was accepted by ${by} and is now in progress, assigned to them.`,
       };
     case 'declined':
       return {
         subject: `${id} declined — ${title}`,
-        headline: 'Request declined',
+        headline: `${Noun} declined`,
         line: `${id} was declined by ${by}.${detail ? ` Reason: ${detail}` : ''}`,
       };
     case 'scheduled':
       return {
         subject: `${id} scheduled — ${title}`,
-        headline: 'Request scheduled',
+        headline: `${Noun} scheduled`,
         line: `${id} was scheduled by ${by} and will complete automatically on ${ticket.campaignDate}.`,
       };
     case 'done':
       return {
         subject: `${id} completed — ${title}`,
-        headline: 'Request completed',
+        headline: `${Noun} completed`,
         line: `${id} was marked as done by ${by}.`,
       };
     case 'deleted':
       return {
         subject: `${id} deleted — ${title}`,
-        headline: 'Request deleted',
+        headline: `${Noun} deleted`,
         line: `${id} was deleted by ${by}.`,
       };
     case 'updated':
     default:
       return {
         subject: `${id} updated — ${title}`,
-        headline: 'Request updated',
+        headline: `${Noun} updated`,
         line: `${id} was updated by ${by}.${detail ? ` ${detail}` : ''}`,
       };
   }
@@ -136,6 +144,8 @@ function escapeHtml(value: string): string {
 }
 
 function renderHtml(copy: EventCopy, ticket: Ticket): string {
+  const noun = entityNounFor(getTab(ticket.area));
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   const fact = (label: string, value: string) => `
     <tr>
       <td style="padding:6px 14px 6px 0;color:#7d71a3;font-size:12px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;">${label}</td>
@@ -153,7 +163,7 @@ function renderHtml(copy: EventCopy, ticket: Ticket): string {
         <h2 style="margin:0 0 6px;font-size:18px;color:#221540;">${escapeHtml(copy.headline)}</h2>
         <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#55487c;">${escapeHtml(copy.line)}</p>
         <table style="border-collapse:collapse;margin-bottom:20px;">
-          ${fact('Request', ticket.id)}
+          ${fact(Noun, ticket.id)}
           ${fact('Title', ticket.title)}
           ${fact('Tab', tabName(ticket.area))}
           ${fact('Brand', ticket.brand)}
@@ -165,7 +175,7 @@ function renderHtml(copy: EventCopy, ticket: Ticket): string {
         </a>
       </div>
       <div style="padding:12px 24px;border-top:1px solid #efecf9;font-size:11.5px;color:#9b90bd;">
-        You received this because you requested or worked on this request.
+        You received this because you submitted or are working on this ${noun}.
       </div>
     </div>
   </div>`;
@@ -201,13 +211,15 @@ export function notifyTicketEvent(
   const cc = ccAddresses.filter((e) => !to.includes(e));
 
   const copy = copyFor(kind, ticket, actor, detail);
+  const noun = entityNounFor(getTab(ticket.area));
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   transporter
     .sendMail({
       from: fromAddress,
       to,
       ...(cc.length ? { cc } : {}),
       subject: copy.subject,
-      text: `${copy.headline}\n\n${copy.line}\n\nRequest: ${ticket.id}\nTitle: ${ticket.title}\nTab: ${tabName(ticket.area)}\nBrand: ${ticket.brand}\nStatus: ${ticket.status}\n\n${appUrl}`,
+      text: `${copy.headline}\n\n${copy.line}\n\n${Noun}: ${ticket.id}\nTitle: ${ticket.title}\nTab: ${tabName(ticket.area)}\nBrand: ${ticket.brand}\nStatus: ${ticket.status}\n\n${appUrl}`,
       html: renderHtml(copy, ticket),
     })
     .then((info) => {
