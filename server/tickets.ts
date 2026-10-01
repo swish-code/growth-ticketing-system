@@ -77,17 +77,17 @@ export async function listTickets(): Promise<Ticket[]> {
 }
 
 /**
- * Most recent submission timestamp by this requester in this tab, regardless
- * of that request's later status — the basis for the frequency cooldown
- * (spec: request-frequency rule).
+ * Campaign dates of this requester's own requests in this tab — the basis for
+ * the campaign-date spacing rule. A Declined request never runs, so its date
+ * doesn't block anyone from picking a nearby one.
  */
-export async function getLastRequestAt(email: string, area: string): Promise<number | null> {
-  const result = await query<{ last: string | null }>(
-    `SELECT MAX(created_at) AS last FROM tickets WHERE requester_email = $1 AND area = $2`,
+export async function getRequesterCampaignDates(email: string, area: string): Promise<string[]> {
+  const result = await query<{ campaign_date: string }>(
+    `SELECT campaign_date FROM tickets
+     WHERE requester_email = $1 AND area = $2 AND status <> 'Declined'`,
     [email, area],
   );
-  const last = result.rows[0]?.last;
-  return last === null || last === undefined ? null : Number(last);
+  return result.rows.map((row) => row.campaign_date);
 }
 
 /* ------------------------------------------------------------------ */

@@ -138,8 +138,9 @@ Backend routes repeat every check — hiding UI is never treated as security.
 
 IDs are six digits behind the prefix (`CW-000001`) and come from an atomic per-tab counter.
 The minimum campaign-date lead time applies to every requester — administrators included, no
-bypass — and each tab also has a per-employee submission cooldown (3 days for CRM WhatsApp and
-Digital Ads, 5 for every other tab; admins do bypass this one).
+bypass. There is no limit on how often someone may submit; instead the campaign dates of one
+person's own requests in a tab must be at least 3 days apart (a Declined request doesn't count,
+Menu Issues has no campaign date so is exempt, and admins bypass this one).
 
 ---
 

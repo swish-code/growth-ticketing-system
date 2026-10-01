@@ -5,7 +5,6 @@ import {
   priorityTargetMs,
   todayKey,
   toDateKey,
-  type RequestEligibility,
   type TabDef,
   type Ticket,
 } from '../../shared/spec';
@@ -241,24 +240,6 @@ export function downloadImportTemplate(tab: TabDef): void {
   downloadCsv(
     [header, example],
     `${tab.name.toLowerCase().replace(/\s+/g, '-')}-import-template.csv`,
-  );
-}
-
-/* --------------------------- request frequency -------------------------- */
-
-/** Short line for banners: "Last request: … · Next allowed: …" or eligible. */
-export function eligibilitySummary(e: RequestEligibility): string {
-  if (e.lastRequestAt === null) return 'No previous request in this tab yet — you can submit now.';
-  if (e.eligible) return `Last request: ${formatDateTime(e.lastRequestAt)} · You can submit now.`;
-  return `Last request: ${formatDateTime(e.lastRequestAt)} · Next allowed: ${formatDateTime(e.nextEligibleAt)}`;
-}
-
-/** Full explanatory sentence for the blocking case, used inside the form. */
-export function eligibilityBlockedMessage(e: RequestEligibility, tabLabel: string): string {
-  return (
-    `You can submit your next ${tabLabel} request on ${formatDateTime(e.nextEligibleAt)}. ` +
-    `Your previous request was on ${formatDateTime(e.lastRequestAt)} ` +
-    `(${e.cooldownDays}-day waiting period).`
   );
 }
 

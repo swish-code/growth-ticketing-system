@@ -10,7 +10,6 @@ import {
   hasTrackingFields,
   toDateKey,
   type BulkActionResult,
-  type RequestEligibility,
   type TabDef,
   type Ticket,
 } from '../../shared/spec';
@@ -27,7 +26,6 @@ import {
   statusClass,
   trackingToneClass,
 } from '../lib/format';
-import { EligibilityBanner } from './EligibilityBanner';
 import { IconCalendar, IconDownload, IconPlus, IconTasks } from './Icons';
 import { TabCalendar } from './TabCalendar';
 
@@ -52,7 +50,6 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
   const [from, setFrom] = useState(EMPTY);
   const [to, setTo] = useState(EMPTY);
   const [aggregator, setAggregator] = useState(EMPTY);
-  const [eligibility, setEligibility] = useState<RequestEligibility | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
@@ -107,23 +104,6 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
     setBulkResult(null);
     setBulkError('');
   }, [tab.id]);
-
-  // Request-frequency cooldown for this tab (spec: request frequency rules).
-  useEffect(() => {
-    if (!canSubmit) return;
-    let active = true;
-    api
-      .eligibility(tab.id)
-      .then((res) => {
-        if (active) setEligibility(res.eligibility);
-      })
-      .catch(() => {
-        if (active) setEligibility(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [tab.id, canSubmit, tickets]);
 
   const areaTickets = useMemo(
     () => tickets.filter((t) => t.area === tab.id),
@@ -212,7 +192,6 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
           Your role has form access only. You can submit {tab.name} requests, but existing
           submissions are not visible to you.
         </div>
-        {canSubmit && <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} compact />}
       </section>
     );
   }
@@ -228,7 +207,6 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
               <> · average response {formatDuration(averageResponse)}</>
             )}
           </p>
-          {canSubmit && <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} compact />}
         </div>
         <div className="head-actions">
           <button className="btn btn-ghost" onClick={() => exportCsv(tab, filtered)}>
@@ -264,7 +242,6 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
           user={user}
           tab={tab}
           tickets={tickets}
-          eligibility={eligibility}
           onOpen={onOpen}
           onCreateForDate={(date) => onNew(date)}
         />

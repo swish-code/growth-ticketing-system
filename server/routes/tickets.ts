@@ -1,17 +1,18 @@
 import { Router, type Request, type Response } from 'express';
 import {
+  CAMPAIGN_DATE_SPACING_DAYS,
   MENU_ISSUES,
   STATUSES,
+  campaignDateSpacingConflict,
   canManage,
   canUseBrand,
-  computeEligibility,
   deriveCampaignDate,
   deriveTitle,
-  formatDateTimeIso,
   getTab,
   hasFormAccess,
   hasSubmissionAccess,
   hasTrackingFields,
+  primaryDateField,
   tabAccess,
   tabName,
   todayKey,
@@ -29,7 +30,7 @@ import {
   TICKET_COLUMNS,
   canMarkDone,
   canSchedule,
-  getLastRequestAt,
+  getRequesterCampaignDates,
   getTicket,
   listAudit,
   listTickets,
@@ -58,19 +59,20 @@ function canReadTicket(viewer: Viewer, ticket: Ticket): boolean {
 }
 
 /* ------------------------------------------------------------------ */
-/* GET — request-frequency eligibility                                 */
+/* GET — the requester's own booked campaign dates                     */
 /* ------------------------------------------------------------------ */
 
-ticketsRouter.get('/eligibility', async (req: Request, res: Response) => {
+ticketsRouter.get('/booked-dates', async (req: Request, res: Response) => {
   const viewer = await resolveViewer(req);
   if (!viewer) return res.status(401).json({ error: 'Not signed in.' });
 
   const area = String(req.query.area ?? '');
-  if (!getTab(area)) return res.status(400).json({ error: 'Unknown request tab.' });
+  const tab = getTab(area);
+  if (!tab) return res.status(400).json({ error: 'Unknown request tab.' });
 
-  const lastRequestAt = await getLastRequestAt(viewer.email, area);
-  const eligibility = computeEligibility(area, lastRequestAt, Date.now(), viewer.isAdmin);
-  return res.json({ eligibility });
+  // Tabs with no date field have no campaign dates to space out.
+  const dates = primaryDateField(tab) ? await getRequesterCampaignDates(viewer.email, area) : [];
+  return res.json({ dates, spacingDays: CAMPAIGN_DATE_SPACING_DAYS });
 });
 
 /* ------------------------------------------------------------------ */
@@ -137,22 +139,6 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
     return res.status(403).json({ error: 'Your role does not have access to this tab.' });
   }
 
-  // Request-frequency cooldown: cannot be bypassed from the frontend — this is
-  // the authoritative check regardless of what GET /eligibility last reported.
-  if (!viewer.isAdmin) {
-    const lastRequestAt = await getLastRequestAt(viewer.email, area);
-    const eligibility = computeEligibility(area, lastRequestAt, Date.now(), false);
-    if (!eligibility.eligible && eligibility.nextEligibleAt && eligibility.lastRequestAt) {
-      return res.status(429).json({
-        error:
-          `You can submit your next ${tab.name} request on ` +
-          `${formatDateTimeIso(eligibility.nextEligibleAt)}. Your previous request was on ` +
-          `${formatDateTimeIso(eligibility.lastRequestAt)} (${eligibility.cooldownDays}-day waiting period).`,
-        eligibility,
-      });
-    }
-  }
-
   const settings = await loadFormSettings();
   const result = validateSubmission(tab, req.body?.data ?? {}, settings);
   if ('error' in result) return res.status(400).json({ error: result.error });
@@ -164,10 +150,29 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   }
 
   const now = Date.now();
-  const number = await nextTicketNumber(area);
-  const id = `${tab.prefix}-${String(number).padStart(6, '0')}`;
   const title = deriveTitle(values);
   const campaignDate = deriveCampaignDate(values, todayKey(now));
+
+  // Campaign-date spacing: cannot be bypassed from the frontend — this is the
+  // authoritative check regardless of what the form's own hint showed.
+  if (!viewer.isAdmin && primaryDateField(tab)) {
+    const conflict = campaignDateSpacingConflict(
+      campaignDate,
+      await getRequesterCampaignDates(viewer.email, area),
+    );
+    if (conflict) {
+      return res.status(400).json({
+        error:
+          `You already have a ${tab.name} request with a campaign date of ${conflict}. ` +
+          `Campaign dates of your requests must be at least ${CAMPAIGN_DATE_SPACING_DAYS} days apart.`,
+      });
+    }
+  }
+
+  // Reserved only once the request is accepted, so a rejected one never burns an ID.
+  const number = await nextTicketNumber(area);
+  const id = `${tab.prefix}-${String(number).padStart(6, '0')}`;
+
   // Tabs with no ownership lock (TabDef.noOwnershipLock) have no "Accept &
   // assign to me" step for anyone to move it past New, so it starts already
   // actionable by the whole team.

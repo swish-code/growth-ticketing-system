@@ -5,7 +5,6 @@ import type {
   FormValues,
   ImportResult,
   Notification,
-  RequestEligibility,
   Role,
   StaffMember,
   Ticket,
@@ -130,9 +129,10 @@ export const api = {
   bulkTickets: (op: 'done' | 'delete', ids: string[]) =>
     post<BulkActionResult>('/api/tickets', { action: 'bulk', op, ids }),
 
-  eligibility: (area: string) =>
-    request<{ eligibility: RequestEligibility }>(
-      `/api/tickets/eligibility?area=${encodeURIComponent(area)}`,
+  /** The requester's own campaign dates in a tab, for the date-spacing rule. */
+  bookedDates: (area: string) =>
+    request<{ dates: string[]; spacingDays: number }>(
+      `/api/tickets/booked-dates?area=${encodeURIComponent(area)}`,
     ),
 
   /* ------------------------------- admin ------------------------------- */

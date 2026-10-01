@@ -708,57 +708,37 @@ export function priorityTargetMs(priority: string | undefined): number | null {
 }
 
 /* ------------------------------------------------------------------ */
-/* Request frequency / cooldown                                        */
+/* Campaign-date spacing                                                */
 /*                                                                      */
-/* Each employee may only submit a new request in a given tab after a  */
-/* waiting period from their previous request IN THAT SAME TAB (not a  */
-/* department-wide cooldown) — CRM WhatsApp and Digital Ads: 3 days;   */
-/* every other tab: 5 days. "Previous request" counts any submission   */
-/* regardless of its later status (Declined included), measured from   */
-/* submission time. Administrators bypass this cooldown — unlike the    */
-/* campaign-date minimum lead time and the Done rule, neither of which  */
-/* has an admin bypass.                                                 */
+/* There is no limit on WHEN an employee may submit — they can file     */
+/* several requests in the same tab on the same day. What is limited is */
+/* the campaign dates of their own requests in that tab: any two must   */
+/* be at least CAMPAIGN_DATE_SPACING_DAYS apart (a Declined request     */
+/* never runs, so it doesn't count). Administrators bypass this; the    */
+/* per-field minimum lead time has no admin bypass. Tabs with no date   */
+/* field (Menu Issues) have nothing to space.                           */
 /* ------------------------------------------------------------------ */
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const CAMPAIGN_DATE_SPACING_DAYS = 3;
 
-export const COOLDOWN_DAYS_BY_AREA: Record<string, number> = {
-  'crm-whatsapp': 3,
-  'digital-ads': 3,
-  influencer: 5,
-  'menu-updates': 5,
-  'menu-issues': 5,
-  'external-activities': 5,
-  'aggregator-campaign': 5,
-};
-
-export function cooldownDaysFor(area: string): number {
-  return COOLDOWN_DAYS_BY_AREA[area] ?? 5;
+function dayNumber(dateKey: string): number {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return Math.round(Date.UTC(y, m - 1, d) / (24 * 60 * 60 * 1000));
 }
 
-export interface RequestEligibility {
-  area: string;
-  cooldownDays: number;
-  /** Epoch ms of the requester's previous submission in this tab, or null if none. */
-  lastRequestAt: number | null;
-  /** Epoch ms the requester becomes eligible again, or null if eligible now. */
-  nextEligibleAt: number | null;
-  eligible: boolean;
-}
-
-export function computeEligibility(
-  area: string,
-  lastRequestAt: number | null,
-  now = Date.now(),
-  bypass = false,
-): RequestEligibility {
-  const cooldownDays = cooldownDaysFor(area);
-  if (lastRequestAt === null) {
-    return { area, cooldownDays, lastRequestAt: null, nextEligibleAt: null, eligible: true };
+/** The existing campaign date that is too close to `date`, or null when it's fine. */
+export function campaignDateSpacingConflict(
+  date: string,
+  existingDates: string[],
+  spacingDays = CAMPAIGN_DATE_SPACING_DAYS,
+): string | null {
+  const target = dayNumber(date);
+  if (Number.isNaN(target)) return null;
+  for (const other of existingDates) {
+    const gap = Math.abs(dayNumber(other) - target);
+    if (gap < spacingDays) return other;
   }
-  const nextEligibleAt = lastRequestAt + cooldownDays * DAY_MS;
-  const eligible = bypass || now >= nextEligibleAt;
-  return { area, cooldownDays, lastRequestAt, nextEligibleAt: eligible ? null : nextEligibleAt, eligible };
+  return null;
 }
 
 /* ------------------------------------------------------------------ */

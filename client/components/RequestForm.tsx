@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  CAMPAIGN_DATE_SPACING_DAYS,
+  campaignDateSpacingConflict,
   earliestDateFor,
   fieldSetting,
   isFieldVisible,
@@ -7,12 +9,11 @@ import {
   type FieldDef,
   type FormSettings,
   type FormValues,
-  type RequestEligibility,
   type TabDef,
   type Ticket,
 } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
-import { EligibilityBanner } from './EligibilityBanner';
+import { formatDateKey } from '../lib/format';
 import { IconAlert, IconClose } from './Icons';
 
 interface Props {
@@ -25,8 +26,8 @@ interface Props {
    * Editing an already-submitted request instead of creating one — an
    * administrator correcting a wrong name or a mistyped field. Only the
    * submitted field values change; status, assignment and timestamps are
-   * untouched, and the minimum campaign-date lead time and the request-
-   * frequency cooldown do not apply (this isn't a new submission).
+   * untouched, and the minimum campaign-date lead time and the campaign-date
+   * spacing rule do not apply (this isn't a new submission).
    */
   ticket?: Ticket;
   onClose: () => void;
@@ -65,31 +66,35 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
   const [customText, setCustomText] = useState<Record<string, string>>(() => seeded?.customText ?? {});
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [eligibility, setEligibility] = useState<RequestEligibility | null>(null);
+  const [bookedDates, setBookedDates] = useState<string[]>([]);
 
   const fields = useMemo(
     () => tab.fields.filter((field) => fieldSetting(formSettings, tab.id, field).enabled),
     [tab, formSettings],
   );
 
-  // Request-frequency cooldown (spec: request frequency rules). Re-checked
-  // authoritatively by the server on submit — this is display only, and
-  // doesn't apply at all when correcting an existing request.
+  // The requester's own campaign dates in this tab, for the date-spacing hint.
+  // Re-checked authoritatively by the server on submit — this is display only,
+  // and doesn't apply to administrators or when correcting an existing request.
   useEffect(() => {
-    if (isEditing) return;
+    if (isEditing || user.isAdmin || !dateField) return;
     let active = true;
     api
-      .eligibility(tab.id)
+      .bookedDates(tab.id)
       .then((res) => {
-        if (active) setEligibility(res.eligibility);
+        if (active) setBookedDates(res.dates);
       })
       .catch(() => {
-        if (active) setEligibility(null);
+        if (active) setBookedDates([]);
       });
     return () => {
       active = false;
     };
-  }, [tab.id, isEditing]);
+  }, [tab.id, isEditing, user.isAdmin, dateField]);
+
+  const chosenDate = dateField ? values[dateField.label] : undefined;
+  const dateConflict =
+    typeof chosenDate === 'string' && chosenDate ? campaignDateSpacingConflict(chosenDate, bookedDates) : null;
 
   function setValue(label: string, value: unknown) {
     setValues((prev) => ({ ...prev, [label]: value }));
@@ -123,6 +128,13 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
       if (typeof start === 'string' && start) return start;
     }
     return isEditing ? undefined : earliestDateFor(field);
+  }
+
+  function spacingMessage(conflict: string): string {
+    return (
+      `You already have a ${tab.name} request with a campaign date of ${formatDateKey(conflict)}. ` +
+      `Campaign dates of your requests must be at least ${CAMPAIGN_DATE_SPACING_DAYS} days apart.`
+    );
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -162,8 +174,8 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
       if (!empty) payload[field.label] = value;
     }
 
-    if (!isEditing && eligibility && !eligibility.eligible) {
-      setError("You can't submit yet — see the notice above.");
+    if (dateConflict) {
+      setError(spacingMessage(dateConflict));
       return;
     }
 
@@ -202,8 +214,6 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
         </header>
 
         <div className="modal-body">
-          {!isEditing && <EligibilityBanner eligibility={eligibility} tabLabel={tab.name} />}
-
           <form className="form-grid" onSubmit={handleSubmit}>
           {fields.map((field) => {
             if (!isFieldVisible(tab, field, values)) return null;
@@ -295,6 +305,13 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
                     onChange={(e) => setValue(field.label, e.target.value)}
                   />
                 )}
+
+                {field === dateField && dateConflict && (
+                  <p className="form-error">
+                    <IconAlert size={17} />
+                    <span>{spacingMessage(dateConflict)}</span>
+                  </p>
+                )}
               </div>
             );
           })}
@@ -313,12 +330,8 @@ export function RequestForm({ user, tab, formSettings, initialDate, ticket, onCl
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={submitting || (!isEditing && eligibility ? !eligibility.eligible : false)}
-              title={
-                !isEditing && eligibility && !eligibility.eligible
-                  ? 'You cannot submit until the waiting period has passed.'
-                  : undefined
-              }
+              disabled={submitting || Boolean(dateConflict)}
+              title={dateConflict ? 'Pick a campaign date further from your other requests.' : undefined}
             >
               {submitting ? 'Saving…' : isEditing ? 'Save changes' : 'Submit request'}
             </button>

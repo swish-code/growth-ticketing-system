@@ -7,12 +7,11 @@ import {
   ticketDateSpan,
   toDateKey,
   todayKey,
-  type RequestEligibility,
   type TabDef,
   type Ticket,
 } from '../../shared/spec';
 import type { AppUser } from '../api';
-import { eligibilitySummary, formatDateKey, statusClass } from '../lib/format';
+import { formatDateKey, statusClass } from '../lib/format';
 import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPlus } from './Icons';
 import './calendar.css';
 import './eligibility.css';
@@ -21,7 +20,6 @@ interface Props {
   user: AppUser;
   tab: TabDef;
   tickets: Ticket[];
-  eligibility: RequestEligibility | null;
   onOpen: (ticket: Ticket) => void;
   onCreateForDate: (dateKey: string) => void;
 }
@@ -71,7 +69,7 @@ function buildMonthCells(year: number, month: number): DayCell[] {
  * created for whichever day the user selects, then lets them create it
  * pre-filled with that day.
  */
-export function TabCalendar({ user, tab, tickets, eligibility, onOpen, onCreateForDate }: Props) {
+export function TabCalendar({ user, tab, tickets, onOpen, onCreateForDate }: Props) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -133,8 +131,7 @@ export function TabCalendar({ user, tab, tickets, eligibility, onOpen, onCreateF
 
   const selectedTickets = selectedDay ? (byDay.get(selectedDay) ?? []) : [];
   const selectedDateOk = selectedDay ? dateEligible(selectedDay) : false;
-  const selectedCooldownOk = eligibility ? eligibility.eligible : true;
-  const canCreateSelected = selectedDateOk && selectedCooldownOk;
+  const canCreateSelected = selectedDateOk;
 
   return (
     <div>
@@ -255,25 +252,12 @@ export function TabCalendar({ user, tab, tickets, eligibility, onOpen, onCreateF
                   : 'Menu Issues can only be reported for today.'}
             </span>
 
-            {eligibility && (
-              <span className={`cal-day-detail-status ${eligibility.eligible ? 'ok' : 'blocked'}`}>
-                {eligibility.eligible ? <IconCheck size={16} /> : <IconAlert size={16} />}
-                {eligibilitySummary(eligibility)}
-              </span>
-            )}
-
             <div>
               <button
                 type="button"
                 className="btn btn-primary"
                 disabled={!canCreateSelected}
-                title={
-                  !selectedDateOk
-                    ? 'This day is not a valid target date.'
-                    : !selectedCooldownOk
-                      ? 'You are still in the waiting period for this tab.'
-                      : undefined
-                }
+                title={!selectedDateOk ? 'This day is not a valid target date.' : undefined}
                 onClick={() => onCreateForDate(selectedDay)}
               >
                 <IconPlus size={17} />
