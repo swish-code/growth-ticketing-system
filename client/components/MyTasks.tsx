@@ -39,7 +39,7 @@ export function MyTasks({ user, tickets, onOpen }: Props) {
   const filtered = useMemo(
     () =>
       managed.filter((ticket) => {
-        if (brand && ticket.brand !== brand) return false;
+        if (brand && !ticket.brands.includes(brand)) return false;
         if (aggregator) {
           if (ticket.area !== MENU_ISSUES) return false;
           if (String(ticket.data.Aggregator ?? '') !== aggregator) return false;

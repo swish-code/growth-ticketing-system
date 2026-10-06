@@ -3,6 +3,7 @@ import {
   ACCEPTANCE_SLA_MS,
   MENU_ISSUES,
   TABS,
+  brandsFromValue,
   tabName,
   todayKey,
   type AuditEntry,
@@ -36,10 +37,12 @@ export interface TicketRow {
 }
 
 export function mapTicket(row: TicketRow): Ticket {
+  const fromData = brandsFromValue((row.data ?? {}).Brand);
   return {
     id: row.id,
     area: row.area,
     brand: row.brand,
+    brands: fromData.length ? fromData : brandsFromValue(row.brand),
     title: row.title,
     campaignDate: row.campaign_date,
     status: row.status as TicketStatus,

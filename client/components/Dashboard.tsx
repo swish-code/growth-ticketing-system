@@ -75,11 +75,14 @@ export function Dashboard({ user, tickets }: Props) {
   const brands = useMemo(() => {
     const map = new Map<string, { total: number; done: number; late: number }>();
     for (const ticket of tickets) {
-      const entry = map.get(ticket.brand) ?? { total: 0, done: 0, late: 0 };
-      entry.total += 1;
-      if (ticket.status === 'Done') entry.done += 1;
-      if (isLate(ticket, today)) entry.late += 1;
-      map.set(ticket.brand, entry);
+      // A request covering several brands counts once toward each of them.
+      for (const brand of ticket.brands) {
+        const entry = map.get(brand) ?? { total: 0, done: 0, late: 0 };
+        entry.total += 1;
+        if (ticket.status === 'Done') entry.done += 1;
+        if (isLate(ticket, today)) entry.late += 1;
+        map.set(brand, entry);
+      }
     }
     return [...map.entries()].sort((a, b) => b[1].total - a[1].total);
   }, [tickets, today]);

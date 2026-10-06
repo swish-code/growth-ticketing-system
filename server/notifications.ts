@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { canManage, canUseBrand, tabName, type Notification, type Ticket } from '../shared/spec';
+import { canManage, canUseAnyBrand, tabName, type Notification, type Ticket } from '../shared/spec';
 import { resolveViewerByEmail } from './auth';
 import { query } from './db';
 import type { Actor } from './tickets';
@@ -76,13 +76,13 @@ function copyFor(kind: NotificationKind, ticket: Ticket, actor: Actor, detail?: 
   }
 }
 
-/** Every staff member who can currently Manage this tab for this brand. */
-async function listManagersFor(area: string, brand: string): Promise<string[]> {
+/** Every staff member who can currently Manage this tab for at least one of these brands. */
+async function listManagersFor(area: string, brands: string[]): Promise<string[]> {
   const staff = await query<{ email: string }>(`SELECT email FROM staff`);
   const viewers = await Promise.all(staff.rows.map((row) => resolveViewerByEmail(row.email)));
   return viewers
     .filter((v): v is NonNullable<typeof v> => Boolean(v))
-    .filter((v) => canManage(v, area) && canUseBrand(v, brand))
+    .filter((v) => canManage(v, area) && canUseAnyBrand(v, brands))
     .map((v) => v.email);
 }
 
@@ -96,7 +96,7 @@ async function recipientsFor(kind: NotificationKind, ticket: Ticket, actor: Acto
     return listAdmins();
   }
   if (kind === 'created') {
-    const managers = await listManagersFor(ticket.area, ticket.brand);
+    const managers = await listManagersFor(ticket.area, ticket.brands);
     return [...new Set([ticket.requesterEmail, ...managers])];
   }
   const all = [ticket.requesterEmail, ticket.ownerEmail, actor.email];

@@ -83,7 +83,7 @@ export function CalendarView({ user, tickets, onOpen }: Props) {
     () =>
       tickets.filter((ticket) => {
         if (area && ticket.area !== area) return false;
-        if (brand && ticket.brand !== brand) return false;
+        if (brand && !ticket.brands.includes(brand)) return false;
         if (status && ticket.status !== status) return false;
         return true;
       }),

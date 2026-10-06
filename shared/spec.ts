@@ -22,6 +22,7 @@ export const BRANDS = [
   'Just C',
   'Chili Pepper',
   'Forevermore',
+  'PEW PEW',
 ] as const;
 
 export type Brand = (typeof BRANDS)[number];
@@ -91,9 +92,11 @@ export interface TabDef {
   noOwnershipLock?: boolean;
 }
 
+// A single request can cover several brands, so this is a multi-select; the
+// stored value is a list (see brandsFromValue for reading legacy single values).
 const BRAND_FIELD: FieldDef = {
   label: 'Brand',
-  type: 'select',
+  type: 'multi',
   required: true,
   options: [...BRANDS],
 };
@@ -836,6 +839,30 @@ export function canUseBrand(viewer: Viewer, brand: string): boolean {
   return allowedBrands(viewer).includes(brand);
 }
 
+/** Creating a request needs access to EVERY brand it names. */
+export function canUseAllBrands(viewer: Viewer, brands: string[]): boolean {
+  return brands.length > 0 && brands.every((brand) => canUseBrand(viewer, brand));
+}
+
+/** Seeing or working on a request needs access to AT LEAST ONE of its brands. */
+export function canUseAnyBrand(viewer: Viewer, brands: string[]): boolean {
+  return brands.some((brand) => canUseBrand(viewer, brand));
+}
+
+/**
+ * The brands a stored Brand value names. New requests store a list; older
+ * ones stored a single string, so both shapes are accepted.
+ */
+export function brandsFromValue(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  return list.map((v) => String(v).trim()).filter(Boolean);
+}
+
+/** Display form of a request's brands, also kept in the tickets.brand column. */
+export function formatBrands(brands: string[]): string {
+  return brands.join(', ');
+}
+
 export function hasFormAccess(viewer: Viewer): boolean {
   return viewer.isAdmin || viewer.permissions.forms;
 }
@@ -869,7 +896,10 @@ export function canSeeDashboard(viewer: Viewer): boolean {
 export interface Ticket {
   id: string;
   area: string;
+  /** Display string of every brand on the request, e.g. "Mishmash, PEW PEW". */
   brand: string;
+  /** The same brands as a list — use this for filtering and permissions. */
+  brands: string[];
   title: string;
   campaignDate: string;
   status: TicketStatus;

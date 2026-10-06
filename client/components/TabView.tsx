@@ -115,7 +115,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
     return areaTickets.filter((ticket) => {
       if (term && !`${ticket.id} ${ticket.title}`.toLowerCase().includes(term)) return false;
       if (status && ticket.status !== status) return false;
-      if (brand && ticket.brand !== brand) return false;
+      if (brand && !ticket.brands.includes(brand)) return false;
       const submitted = toDateKey(ticket.createdAt);
       if (from && submitted < from) return false;
       if (to && submitted > to) return false;

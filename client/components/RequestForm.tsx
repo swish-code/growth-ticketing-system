@@ -44,6 +44,10 @@ function seedFromTicket(tab: TabDef, ticket: Ticket): { values: FormValues; cust
   const values: FormValues = { ...ticket.data };
   const customText: Record<string, string> = {};
   for (const field of tab.fields) {
+    // Older requests stored Brand (a single-select back then) as a plain string.
+    if (field.type === 'multi' && typeof values[field.label] === 'string' && values[field.label]) {
+      values[field.label] = [values[field.label] as string];
+    }
     if (field.type !== 'multi' || !field.customOption) continue;
     const raw = values[field.label];
     if (!Array.isArray(raw)) continue;

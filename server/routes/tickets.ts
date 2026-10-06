@@ -4,10 +4,13 @@ import {
   MENU_ISSUES,
   STATUSES,
   campaignDateSpacingConflict,
+  brandsFromValue,
   canManage,
-  canUseBrand,
+  canUseAllBrands,
+  canUseAnyBrand,
   deriveCampaignDate,
   deriveTitle,
+  formatBrands,
   getTab,
   hasFormAccess,
   hasSubmissionAccess,
@@ -55,7 +58,7 @@ function canReadTicket(viewer: Viewer, ticket: Ticket): boolean {
   if (viewer.isAdmin) return true;
   if (!hasSubmissionAccess(viewer)) return false;
   if (tabAccess(viewer, ticket.area) === 'none') return false;
-  return canUseBrand(viewer, ticket.brand);
+  return canUseAnyBrand(viewer, ticket.brands);
 }
 
 /* ------------------------------------------------------------------ */
@@ -144,10 +147,11 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   if ('error' in result) return res.status(400).json({ error: result.error });
 
   const values = result.values;
-  const brand = String(values.Brand ?? '');
-  if (!canUseBrand(viewer, brand)) {
-    return res.status(403).json({ error: 'You do not have access to this brand.' });
+  const brands = brandsFromValue(values.Brand);
+  if (!canUseAllBrands(viewer, brands)) {
+    return res.status(403).json({ error: 'You do not have access to one of the selected brands.' });
   }
+  const brand = formatBrands(brands);
 
   const now = Date.now();
   const title = deriveTitle(values);
@@ -234,7 +238,7 @@ async function editTicket(req: Request, res: Response, viewer: Viewer): Promise<
   if ('error' in result) return res.status(400).json({ error: result.error });
 
   const values = result.values;
-  const brand = String(values.Brand ?? '');
+  const brand = formatBrands(brandsFromValue(values.Brand));
   const title = deriveTitle(values);
   const campaignDate = deriveCampaignDate(values, todayKey());
 
@@ -343,7 +347,7 @@ async function updateTracking(req: Request, res: Response, viewer: Viewer): Prom
   if (!canManage(viewer, ticket.area)) {
     return res.status(403).json({ error: 'You need Manage access on this tab.' });
   }
-  if (!canUseBrand(viewer, ticket.brand)) {
+  if (!canUseAnyBrand(viewer, ticket.brands)) {
     return res.status(403).json({ error: 'You do not have access to this brand.' });
   }
   if (!tab.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
@@ -415,7 +419,7 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
   if (!canManage(viewer, ticket.area)) {
     return res.status(403).json({ error: 'You need Manage access on this tab.' });
   }
-  if (!canUseBrand(viewer, ticket.brand)) {
+  if (!canUseAnyBrand(viewer, ticket.brands)) {
     return res.status(403).json({ error: 'You do not have access to this brand.' });
   }
 
@@ -566,7 +570,7 @@ async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
   if (!canManage(viewer, ticket.area)) {
     return { ok: false, status: 403, error: 'You need Manage access on this tab.' };
   }
-  if (!canUseBrand(viewer, ticket.brand)) {
+  if (!canUseAnyBrand(viewer, ticket.brands)) {
     return { ok: false, status: 403, error: 'You do not have access to this brand.' };
   }
   if (!tab?.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {
@@ -615,7 +619,7 @@ async function scheduleTicket(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
   if (!canManage(viewer, ticket.area)) {
     return { ok: false, status: 403, error: 'You need Manage access on this tab.' };
   }
-  if (!canUseBrand(viewer, ticket.brand)) {
+  if (!canUseAnyBrand(viewer, ticket.brands)) {
     return { ok: false, status: 403, error: 'You do not have access to this brand.' };
   }
   if (!tab?.noOwnershipLock && ticket.ownerEmail && ticket.ownerEmail !== viewer.email && !viewer.isAdmin) {

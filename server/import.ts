@@ -1,9 +1,11 @@
 import {
   MENU_ISSUES,
   STATUSES,
+  brandsFromValue,
   csvColumnsFor,
   deriveCampaignDate,
   deriveTitle,
+  formatBrands,
   todayKey,
   type FormSettings,
   type FormValues,
@@ -142,7 +144,7 @@ async function importRow(
   const validated = validateSubmission(tab, values, settings, createdAt, { enforceMinDate: false });
   if ('error' in validated) return validated.error;
 
-  const brand = String(validated.values.Brand ?? '');
+  const brand = formatBrands(brandsFromValue(validated.values.Brand));
   const title = deriveTitle(validated.values);
   const campaignDate = deriveCampaignDate(validated.values, todayKey(createdAt));
 

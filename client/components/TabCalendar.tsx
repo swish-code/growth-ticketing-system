@@ -100,7 +100,7 @@ export function TabCalendar({ user, tab, tickets, onOpen, onCreateForDate }: Pro
   const filtered = useMemo(
     () =>
       areaTickets.filter((ticket) => {
-        if (brand && ticket.brand !== brand) return false;
+        if (brand && !ticket.brands.includes(brand)) return false;
         if (status && ticket.status !== status) return false;
         return true;
       }),
