@@ -74,7 +74,8 @@ ticketsRouter.get('/booked-dates', async (req: Request, res: Response) => {
   if (!tab) return res.status(400).json({ error: 'Unknown request tab.' });
 
   // Tabs with no date field have no campaign dates to space out.
-  const dates = primaryDateField(tab) ? await getRequesterCampaignDates(viewer.email, area) : [];
+  const spaced = Boolean(primaryDateField(tab)) && !tab.noDateSpacing;
+  const dates = spaced ? await getRequesterCampaignDates(viewer.email, area) : [];
   return res.json({ dates, spacingDays: CAMPAIGN_DATE_SPACING_DAYS });
 });
 
@@ -159,7 +160,7 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
 
   // Campaign-date spacing: cannot be bypassed from the frontend — this is the
   // authoritative check regardless of what the form's own hint showed.
-  if (!viewer.isAdmin && primaryDateField(tab)) {
+  if (!viewer.isAdmin && primaryDateField(tab) && !tab.noDateSpacing) {
     const conflict = campaignDateSpacingConflict(
       campaignDate,
       await getRequesterCampaignDates(viewer.email, area),

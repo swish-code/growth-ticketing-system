@@ -90,6 +90,11 @@ export interface TabDef {
    * the request rather than who "owns" it.
    */
   noOwnershipLock?: boolean;
+  /**
+   * Requests in this tab are not campaigns, so one person may file several with
+   * campaign dates closer than CAMPAIGN_DATE_SPACING_DAYS (e.g. Menu Updates).
+   */
+  noDateSpacing?: boolean;
 }
 
 // A single request can cover several brands, so this is a multi-select; the
@@ -236,6 +241,7 @@ export const TABS: TabDef[] = [
     id: 'menu-updates',
     name: 'Menu Updates',
     prefix: 'MU',
+    noDateSpacing: true,
     fields: [
       BRAND_FIELD,
       { label: 'Start Date', type: 'date', required: true, minDaysFromToday: 5 },
