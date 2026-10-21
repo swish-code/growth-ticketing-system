@@ -19,7 +19,7 @@
 
 .cal-week-head {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
 }
@@ -43,14 +43,13 @@
 }
 .cal-week-bg {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  min-height: 96px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 .cal-week-bars {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   row-gap: 0.12rem;
   pointer-events: none; /* clicks on empty space fall through to the day cell */
   padding-bottom: 0.25rem;

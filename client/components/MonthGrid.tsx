@@ -31,6 +31,10 @@ export function buildMonthCells(year: number, month: number): DayCell[] {
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MAX_LANES = 3;
+// Every week is the same height however busy it is: day number + MAX_LANES bars
+// + one line for "+N more". Cells never grow or shrink with their content.
+const ROW_COUNT = MAX_LANES + 1;
+const WEEK_HEIGHT = `calc(2.1rem + ${ROW_COUNT} * 1.6rem + 0.5rem)`;
 
 const STATUS_CHIP: Record<string, string> = {
   New: 'chip-status-new',
@@ -148,15 +152,12 @@ export function MonthGrid({
             if (s.lane < MAX_LANES) continue;
             for (let c = s.startCol; c <= s.endCol; c++) hiddenPerCol[c] += 1;
           }
-          const anyHidden = hiddenPerCol.some((n) => n > 0);
-          const lanes = Math.min(MAX_LANES, segments.reduce((m, s) => Math.max(m, s.lane + 1), 0));
-          const rows = lanes + (anyHidden ? 1 : 0);
 
           return (
             <div key={week[0].key} className="cal-week">
               <div
                 className="cal-week-bg"
-                style={{ minHeight: `calc(2.1rem + ${rows} * 1.6rem + 0.5rem)` }}
+                style={{ height: WEEK_HEIGHT }}
               >
                 {week.map((cell) => {
                   const locked = isLocked?.(cell.key) ?? false;
@@ -183,7 +184,7 @@ export function MonthGrid({
                 })}
               </div>
 
-              <div className="cal-week-bars" style={{ gridTemplateRows: `2.1rem repeat(${rows}, 1.6rem)` }}>
+              <div className="cal-week-bars" style={{ gridTemplateRows: `2.1rem repeat(${ROW_COUNT}, 1.6rem)` }}>
                 {shown.map((s) => (
                   <button
                     key={`${s.ticket.id}-${week[0].key}`}
@@ -208,7 +209,7 @@ export function MonthGrid({
                       key={`more-${week[col].key}`}
                       type="button"
                       className="cal-more"
-                      style={{ gridColumn: col + 1, gridRow: lanes + 2 }}
+                      style={{ gridColumn: col + 1, gridRow: ROW_COUNT + 1 }}
                       onClick={() => onSelectDay(week[col].key)}
                     >
                       +{count} more
