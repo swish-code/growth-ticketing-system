@@ -106,6 +106,12 @@ const BRAND_FIELD: FieldDef = {
   options: [...BRANDS],
 };
 
+/** A copy of `fields` with `field` placed right after the one labelled `label`. */
+function insertAfter(fields: FieldDef[], label: string, field: FieldDef): FieldDef[] {
+  const at = fields.findIndex((f) => f.label === label);
+  return [...fields.slice(0, at + 1), field, ...fields.slice(at + 1)];
+}
+
 const CHANNELS = ['Talabat', 'Keeta', 'Ordable', 'Deliveroo', 'Snoonu', 'V-thru', 'Jahez'];
 
 /** Fields 1–9 shared by CRM WhatsApp and Digital Ads (spec §8, §9). */
@@ -159,7 +165,14 @@ export const TABS: TabDef[] = [
     name: 'Digital Ads',
     prefix: 'DA',
     fields: [
-      ...campaignBaseFields(3),
+      // An ad can run over a range, so End Date sits right after Campaign Date
+      // (it also makes the ad a bar across its days on the calendar).
+      ...insertAfter(campaignBaseFields(3), 'Campaign Date', {
+        label: 'End Date',
+        type: 'date',
+        required: false,
+        mustBeOnOrAfter: 'Campaign Date',
+      }),
       {
         label: 'CAMPAIGN OBJECTIVE',
         type: 'multi',
@@ -175,6 +188,8 @@ export const TABS: TabDef[] = [
         ],
         customOption: 'Custom objective',
       },
+      { label: 'Campaign goal', type: 'text', required: false },
+      { label: 'Destination URL', type: 'url', required: true },
       { label: 'BUDGET', type: 'number', required: true },
     ],
   },
