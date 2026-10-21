@@ -13,6 +13,7 @@ import {
 import type { AppUser } from '../api';
 import { formatDateKey, statusClass } from '../lib/format';
 import { IconAlert, IconCheck, IconChevronLeft, IconChevronRight, IconPlus } from './Icons';
+import { MonthGrid, buildMonthCells, type DateBasis } from './MonthGrid';
 import './calendar.css';
 import './eligibility.css';
 
@@ -22,45 +23,6 @@ interface Props {
   tickets: Ticket[];
   onOpen: (ticket: Ticket) => void;
   onCreateForDate: (dateKey: string) => void;
-}
-
-type DateBasis = 'campaign' | 'submitted';
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MAX_CHIPS = 3;
-
-const STATUS_CHIP: Record<string, string> = {
-  New: 'chip-status-new',
-  'In progress': 'chip-status-progress',
-  Scheduled: 'chip-status-scheduled',
-  Live: 'chip-status-live',
-  Done: 'chip-status-done',
-  Declined: 'chip-status-declined',
-};
-
-interface DayCell {
-  key: string;
-  dayOfMonth: number;
-  inMonth: boolean;
-}
-
-/** Weeks start on Sunday; exactly as many rows as the month needs. */
-function buildMonthCells(year: number, month: number): DayCell[] {
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const rows = Math.ceil((first.getDay() + daysInMonth) / 7);
-
-  const cells: DayCell[] = [];
-  const cursor = new Date(year, month, 1 - first.getDay());
-  for (let i = 0; i < rows * 7; i++) {
-    cells.push({
-      key: toDateKey(cursor),
-      dayOfMonth: cursor.getDate(),
-      inMonth: cursor.getMonth() === month,
-    });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return cells;
 }
 
 /**
@@ -181,60 +143,17 @@ export function TabCalendar({ user, tab, tickets, onOpen, onCreateForDate }: Pro
           : 'Menu Issues are reported for today only — no future scheduling.'}
       </p>
 
-      <div className="cal-scroll">
-        <div className="cal">
-          <div className="cal-week-head">
-            {WEEKDAYS.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
-          </div>
-          <div className="cal-grid">
-            {cells.map((cell) => {
-              const dayTickets = byDay.get(cell.key) ?? [];
-              const extra = dayTickets.length - MAX_CHIPS;
-              const locked = !dateEligible(cell.key);
-              return (
-                // A day cell must stay a <div>: it hosts real <button> chips
-                // inside it, and buttons cannot legally nest inside buttons.
-                <div
-                  key={cell.key}
-                  role="button"
-                  tabIndex={0}
-                  className={`cal-day ${cell.inMonth ? '' : 'is-out'} ${
-                    cell.key === today ? 'is-today' : ''
-                  } ${cell.key === selectedDay ? 'is-selected' : ''} ${locked ? 'is-locked' : ''}`}
-                  onClick={() => setSelectedDay(cell.key)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedDay(cell.key);
-                    }
-                  }}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <span className="cal-day-num">{cell.dayOfMonth}</span>
-                  {dayTickets.slice(0, MAX_CHIPS).map((ticket) => (
-                    <button
-                      key={ticket.id}
-                      type="button"
-                      className={`cal-chip ${STATUS_CHIP[ticket.status] ?? ''}`}
-                      title={`${ticket.id} · ${ticket.title} · ${ticket.status}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpen(ticket);
-                      }}
-                    >
-                      <i />
-                      <span>{ticket.title || ticket.id}</span>
-                    </button>
-                  ))}
-                  {extra > 0 && <span className="cal-more">+{extra} more</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <MonthGrid
+        cells={cells}
+        tickets={filtered}
+        basis={basis}
+        today={today}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        onOpen={onOpen}
+        isLocked={(key) => !dateEligible(key)}
+        barTitle={(ticket) => ticket.title}
+      />
 
       {selectedDay && (
         <div className="panel">

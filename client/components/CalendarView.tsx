@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
   STATUSES,
-  getTab,
   tabName,
   ticketDateSpan,
   toDateKey,
@@ -12,51 +11,13 @@ import {
 import type { AppUser } from '../api';
 import { formatDateKey, statusClass } from '../lib/format';
 import { IconChevronLeft, IconChevronRight } from './Icons';
+import { MonthGrid, buildMonthCells, type DateBasis } from './MonthGrid';
 import './calendar.css';
 
 interface Props {
   user: AppUser;
   tickets: Ticket[];
   onOpen: (ticket: Ticket) => void;
-}
-
-type DateBasis = 'campaign' | 'submitted';
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MAX_CHIPS = 3;
-
-const STATUS_CHIP: Record<string, string> = {
-  New: 'chip-status-new',
-  'In progress': 'chip-status-progress',
-  Scheduled: 'chip-status-scheduled',
-  Live: 'chip-status-live',
-  Done: 'chip-status-done',
-  Declined: 'chip-status-declined',
-};
-
-interface DayCell {
-  key: string;
-  dayOfMonth: number;
-  inMonth: boolean;
-}
-
-/** Weeks start on Sunday; exactly as many rows as the month needs. */
-function buildMonthCells(year: number, month: number): DayCell[] {
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const rows = Math.ceil((first.getDay() + daysInMonth) / 7);
-
-  const cells: DayCell[] = [];
-  const cursor = new Date(year, month, 1 - first.getDay());
-  for (let i = 0; i < rows * 7; i++) {
-    cells.push({
-      key: toDateKey(cursor),
-      dayOfMonth: cursor.getDate(),
-      inMonth: cursor.getMonth() === month,
-    });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return cells;
 }
 
 export function CalendarView({ user, tickets, onOpen }: Props) {
@@ -108,14 +69,15 @@ export function CalendarView({ user, tickets, onOpen }: Props) {
 
   const cells = useMemo(() => buildMonthCells(year, month), [year, month]);
 
-  const monthTotal = useMemo(
-    () =>
-      cells.reduce(
-        (sum, cell) => (cell.inMonth ? sum + (byDay.get(cell.key)?.length ?? 0) : sum),
-        0,
-      ),
-    [cells, byDay],
-  );
+  // Each request counts once, however many days of the month it runs for.
+  const monthTotal = useMemo(() => {
+    const ids = new Set<string>();
+    for (const cell of cells) {
+      if (!cell.inMonth) continue;
+      for (const ticket of byDay.get(cell.key) ?? []) ids.add(ticket.id);
+    }
+    return ids.size;
+  }, [cells, byDay]);
 
   const monthLabel = new Date(year, month, 1).toLocaleDateString(undefined, {
     month: 'long',
@@ -185,57 +147,17 @@ export function CalendarView({ user, tickets, onOpen }: Props) {
         </select>
       </div>
 
-      <div className="cal-scroll">
-        <div className="cal">
-          <div className="cal-week-head">
-            {WEEKDAYS.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
-          </div>
-          <div className="cal-grid">
-            {cells.map((cell) => {
-              const dayTickets = byDay.get(cell.key) ?? [];
-              const extra = dayTickets.length - MAX_CHIPS;
-              return (
-                <div
-                  key={cell.key}
-                  className={`cal-day ${cell.inMonth ? '' : 'is-out'} ${
-                    cell.key === today ? 'is-today' : ''
-                  } ${cell.key === selectedDay ? 'is-selected' : ''}`}
-                >
-                  <span className="cal-day-num">{cell.dayOfMonth}</span>
-                  {dayTickets.slice(0, MAX_CHIPS).map((ticket) => (
-                    <button
-                      key={ticket.id}
-                      type="button"
-                      className={`cal-chip ${STATUS_CHIP[ticket.status] ?? ''}`}
-                      title={`${ticket.id} · ${tabName(ticket.area)} · ${ticket.title} · ${ticket.status}`}
-                      onClick={() => onOpen(ticket)}
-                    >
-                      <i />
-                      {/* Only needed with every tab mixed together — a single-tab
-                          filter already makes the tab obvious. */}
-                      {!area && (
-                        <span className="cal-chip-tab">{getTab(ticket.area)?.prefix ?? ''}</span>
-                      )}
-                      <span>{ticket.title || ticket.id}</span>
-                    </button>
-                  ))}
-                  {extra > 0 && (
-                    <button
-                      type="button"
-                      className="cal-more"
-                      onClick={() => setSelectedDay(cell.key)}
-                    >
-                      +{extra} more
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <MonthGrid
+        cells={cells}
+        tickets={filtered}
+        basis={basis}
+        today={today}
+        selectedDay={selectedDay}
+        onSelectDay={setSelectedDay}
+        onOpen={onOpen}
+        showTabPrefix={!area}
+        barTitle={(ticket) => `${tabName(ticket.area)} · ${ticket.title}`}
+      />
 
       {selectedDay && (
         <div className="panel">
