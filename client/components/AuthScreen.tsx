@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BRANDS, COMPANY_DOMAIN, TABS } from '../../shared/spec';
+import { BRANDS, TABS } from '../../shared/spec';
 import { ApiError, api, type AppUser } from '../api';
 import { IconAlert, IconCheck, IconClock, IconShield } from './Icons';
 import { ThemeToggle } from './ThemeToggle';
@@ -105,7 +105,7 @@ export function AuthScreen({ onSignedIn }: Props) {
           </div>
 
           <h1>Sign in</h1>
-          <p className="muted">Use your Swish company account to continue.</p>
+          <p className="muted">Sign in with the email an administrator added for you.</p>
 
           <form onSubmit={submit}>
             <div className="field">
@@ -116,7 +116,7 @@ export function AuthScreen({ onSignedIn }: Props) {
                 required
                 autoComplete="username"
                 autoFocus
-                placeholder={`name${COMPANY_DOMAIN}`}
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />

@@ -308,7 +308,7 @@ export function App() {
         />
 
         {view === 'dashboard' && canSeeDashboard(user) && (
-          <Dashboard user={user} tickets={tickets} />
+          <Dashboard user={user} tickets={tickets} onOpen={(t) => setSelectedId(t.id)} />
         )}
 
         {view === 'calendar' && canSeeDashboard(user) && (

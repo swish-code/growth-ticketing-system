@@ -3,7 +3,6 @@ import { promisify } from 'node:util';
 import type { Request, Response } from 'express';
 import {
   ADMIN_ROLE_ID,
-  COMPANY_DOMAIN,
   OWNER_EMAIL,
   adminPermissions,
   emptyPermissions,
@@ -66,10 +65,13 @@ export function normalizeEmail(raw: unknown): string {
   return String(raw ?? '').trim().toLowerCase();
 }
 
-export function isCompanyEmail(email: string): boolean {
-  if (!email.endsWith(COMPANY_DOMAIN)) return false;
-  const local = email.slice(0, -COMPANY_DOMAIN.length);
-  return local.length > 0 && !local.includes('@');
+/**
+ * Any well-formed address is allowed — accounts are only ever created by an
+ * administrator, so people outside the company (agencies, freelancers) can be
+ * given access. Deliberately simple: one "@", no spaces, a dotted domain.
+ */
+export function isValidEmail(email: string): boolean {
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
 
 export function isOwner(email: string): boolean {

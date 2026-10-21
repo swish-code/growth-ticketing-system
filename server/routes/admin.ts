@@ -9,7 +9,7 @@ import {
 } from '../../shared/spec';
 import {
   deleteSessionsForEmail,
-  isCompanyEmail,
+  isValidEmail,
   isOwner,
   normalizeEmail,
   resolveViewer,
@@ -75,8 +75,8 @@ staffRouter.post('/', async (req, res) => {
 
   const op = String(req.body?.op ?? '');
   const email = normalizeEmail(req.body?.email);
-  if (!isCompanyEmail(email)) {
-    return res.status(400).json({ error: 'Email must be a valid @swishhh.net company address.' });
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address.' });
   }
 
   try {

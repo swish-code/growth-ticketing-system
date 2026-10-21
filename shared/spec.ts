@@ -784,7 +784,6 @@ export interface Role {
 
 export const ADMIN_ROLE_ID = 'admin';
 export const OWNER_EMAIL = 'phelo@swishhh.net';
-export const COMPANY_DOMAIN = '@swishhh.net';
 
 export function emptyPermissions(): RolePermissions {
   const tabs: Record<string, TabAccess> = {};

@@ -7,7 +7,7 @@ import {
   createSession,
   deleteSession,
   hashPassword,
-  isCompanyEmail,
+  isValidEmail,
   needsMigration,
   normalizeEmail,
   resolveViewer,
@@ -72,8 +72,8 @@ async function handleLogin(req: Request, res: Response): Promise<Response> {
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? '');
 
-  if (!isCompanyEmail(email)) {
-    return res.status(400).json({ error: 'Email must be a valid @swishhh.net company address.' });
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address.' });
   }
   if (password.length < MIN_PASSWORD) {
     return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD} characters.` });
