@@ -97,7 +97,8 @@ export async function initSchema(): Promise<void> {
       decline_reason TEXT NOT NULL DEFAULT '',
       created_at     BIGINT NOT NULL,
       accepted_at    BIGINT,
-      completed_at   BIGINT
+      completed_at   BIGINT,
+      approved_at    BIGINT
     );
 
     CREATE TABLE IF NOT EXISTS form_settings (
@@ -155,6 +156,17 @@ export async function initSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS notif_recipient_idx ON notifications (recipient_email, created_at DESC);
     CREATE INDEX IF NOT EXISTS notif_unread_idx    ON notifications (recipient_email, read_at);
   `);
+
+  // approved_at was added after the first release (TabDef.approvers). An existing
+  // database gets the column once, and every request that already exists counts
+  // as approved — it predates the approval step — so nothing vanishes for anyone.
+  const hasApprovedAt = await query(
+    `SELECT 1 FROM information_schema.columns WHERE table_name = 'tickets' AND column_name = 'approved_at'`,
+  );
+  if (!hasApprovedAt.rowCount) {
+    await query(`ALTER TABLE tickets ADD COLUMN approved_at BIGINT`);
+    await query(`UPDATE tickets SET approved_at = created_at`);
+  }
 
   const now = Date.now();
 

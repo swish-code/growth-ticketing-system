@@ -154,8 +154,8 @@ async function importRow(
   await query(
     `INSERT INTO tickets
        (id, area, brand, title, campaign_date, status, owner_email, requester_email,
-        requester_name, data, notes, decline_reason, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '', $12)`,
+        requester_name, data, notes, decline_reason, created_at, approved_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '', $12, $12)`,
     [
       id,
       tab.id,

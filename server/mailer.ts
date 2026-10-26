@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { entityNounFor, getTab, tabName, type Ticket } from '../shared/spec';
+import { approversFor, entityNounFor, getTab, tabName, type Ticket } from '../shared/spec';
 import type { Actor } from './tickets';
 
 /**
@@ -62,6 +62,8 @@ export function logMailStatus(): void {
 
 export type TicketEventKind =
   | 'created'
+  | 'approved'
+  | 'rejected'
   | 'accepted'
   | 'declined'
   | 'scheduled'
@@ -88,12 +90,31 @@ function copyFor(kind: TicketEventKind, ticket: Ticket, actor: Actor, detail?: s
 
   switch (kind) {
     case 'created':
+      if (approversFor(ticket.area).length) {
+        return {
+          subject: `${Noun} ${id} needs approval — ${title}`,
+          headline: `A new ${noun} is waiting for approval`,
+          line: `${id} was submitted by ${by} and is on hold until it is approved.`,
+        };
+      }
       return {
         subject: `New ${noun} ${id} — ${title}`,
         headline: `A new ${noun} was submitted`,
         line: isTracker
           ? `${id} was submitted by ${by}.`
           : `${id} was submitted by ${by} and is waiting to be accepted.`,
+      };
+    case 'approved':
+      return {
+        subject: `${Noun} ${id} approved — ${title}`,
+        headline: `${Noun} approved`,
+        line: `${id} was approved by ${by} and is ready to be accepted.`,
+      };
+    case 'rejected':
+      return {
+        subject: `${Noun} ${id} declined — ${title}`,
+        headline: `${Noun} declined`,
+        line: `${id} was declined by ${by} before it went any further.${detail ? ` Reason: ${detail}` : ''}`,
       };
     case 'accepted':
       return {
@@ -201,8 +222,11 @@ function renderHtml(copy: EventCopy, ticket: Ticket): string {
 /* Sending                                                             */
 /* ------------------------------------------------------------------ */
 
-function recipientsFor(ticket: Ticket, actor: Actor): string[] {
-  const all = [ticket.requesterEmail, ticket.ownerEmail, actor.email];
+function recipientsFor(kind: TicketEventKind, ticket: Ticket, actor: Actor, extra: string[]): string[] {
+  // A request waiting for approval is only ever mailed to the requester and the
+  // approvers — never to anyone else, so the agency cannot hear about it early.
+  const approvers = kind === 'created' ? approversFor(ticket.area) : [];
+  const all = [ticket.requesterEmail, ticket.ownerEmail, actor.email, ...approvers, ...extra];
   return [...new Set(all.filter((e): e is string => Boolean(e && e.includes('@'))))];
 }
 
@@ -211,18 +235,20 @@ function recipientsFor(ticket: Ticket, actor: Actor): string[] {
  * staff member (deduplicated). Never throws.
  */
 /** Every other lifecycle event (accepted/declined/scheduled/updated/deleted) is deliberately silent — email only fires for a brand-new request and its completion. */
-const EMAIL_KINDS = new Set<TicketEventKind>(['created', 'done']);
+const EMAIL_KINDS = new Set<TicketEventKind>(['created', 'approved', 'rejected', 'done']);
 
 export function notifyTicketEvent(
   kind: TicketEventKind,
   ticket: Ticket,
   actor: Actor,
   detail?: string,
+  /** Further recipients, e.g. the team that can now see an approved request. */
+  extraRecipients: string[] = [],
 ): void {
   if (!EMAIL_KINDS.has(kind)) return;
   if (!mailEnabled || !transporter || !fromAddress) return;
 
-  const to = recipientsFor(ticket, actor);
+  const to = recipientsFor(kind, ticket, actor, extraRecipients);
   if (!to.length) return;
   const cc = ccAddresses.filter((e) => !to.includes(e));
 

@@ -9,7 +9,9 @@ import {
   dateReached,
   getTab,
   hasSubmissionAccess,
+  approversFor,
   hasTrackingFields,
+  isApproverFor,
   processingTimeMs,
   tabName,
   type AuditEntry,
@@ -35,7 +37,7 @@ interface Props {
   ticket: Ticket;
   onClose: () => void;
   onChanged: () => void;
-  /** Opens the request in edit mode — administrators only. */
+  /** Opens the request in edit mode — administrators, or an approver while it is on Hold. */
   onEdit: () => void;
 }
 
@@ -72,7 +74,11 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
   const lockedByOther =
     !tab?.noOwnershipLock &&
     Boolean(ticket.ownerEmail) && ticket.ownerEmail !== user.email && !user.isAdmin;
-  const canAct = manages && !lockedByOther;
+  // A request on Hold belongs to the approver alone: nobody else can act on it.
+  const held = ticket.status === 'Hold';
+  const isApprover = isApproverFor(user, ticket.area);
+  const canEditRequest = user.isAdmin || (held && isApprover);
+  const canAct = manages && !lockedByOther && !held;
   // No Accept step on a no-ownership-lock tab — Schedule/Done act on New
   // requests the same as In progress ones (new requests there start In
   // progress already; this also covers any pre-existing New request).
@@ -113,6 +119,21 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
       onChanged();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update the request.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decide(kind: 'approve' | 'reject') {
+    setError('');
+    setBusy(true);
+    try {
+      if (kind === 'approve') await api.approveTicket(ticket.id);
+      else await api.rejectTicket(ticket.id, declineReason);
+      setShowDecline(false);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save your decision.');
     } finally {
       setBusy(false);
     }
@@ -169,7 +190,7 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            {user.isAdmin && (
+            {canEditRequest && (
               <button type="button" className="btn btn-ghost" onClick={onEdit}>
                 Edit request
               </button>
@@ -317,7 +338,51 @@ export function RequestDetail({ user, ticket, onClose, onChanged, onEdit }: Prop
               an administrator can continue it.
             </div>
           )}
-          {!manages && (
+          {held && (
+            <div className="callout">
+              <strong>Waiting for approval.</strong>{' '}
+              {isApprover
+                ? 'Review it, then approve it, edit it or decline it. Nobody else, the agency included, can see this request until you approve it.'
+                : `Only ${approversFor(ticket.area).join(', ')} can approve it. It stays hidden from everyone else until then.`}
+              {isApprover && (
+                <div className="actions-row" style={{ marginTop: '0.7rem' }}>
+                  <button className="btn btn-success" disabled={busy} onClick={() => decide('approve')}>
+                    Approve
+                  </button>
+                  <button className="btn" disabled={busy} onClick={onEdit}>
+                    Edit
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    disabled={busy}
+                    onClick={() => setShowDecline((v) => !v)}
+                  >
+                    Decline
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {held && isApprover && showDecline && (
+            <div className="decline-box">
+              <label htmlFor="reject-reason">Decline reason *</label>
+              <textarea
+                id="reject-reason"
+                rows={2}
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                placeholder="Tell the requester why this is declined…"
+              />
+              <button
+                className="btn btn-danger"
+                disabled={busy || !declineReason.trim()}
+                onClick={() => decide('reject')}
+              >
+                Confirm decline
+              </button>
+            </div>
+          )}
+          {!manages && !held && (
             <div className="callout">
               You have read-only access to this tab, so workflow actions are unavailable.
             </div>

@@ -37,6 +37,7 @@ const ROW_COUNT = MAX_LANES + 1;
 const WEEK_HEIGHT = `calc(2.1rem + ${ROW_COUNT} * 1.6rem + 0.5rem)`;
 
 const STATUS_CHIP: Record<string, string> = {
+  Hold: 'chip-status-hold',
   New: 'chip-status-new',
   'In progress': 'chip-status-progress',
   Scheduled: 'chip-status-scheduled',

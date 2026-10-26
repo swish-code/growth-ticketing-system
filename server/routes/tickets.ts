@@ -15,6 +15,8 @@ import {
   hasFormAccess,
   hasSubmissionAccess,
   hasTrackingFields,
+  isApproverFor,
+  isHiddenUntilApproved,
   primaryDateField,
   tabAccess,
   tabName,
@@ -46,7 +48,7 @@ import {
 } from '../tickets';
 import { validateSubmission } from '../validate';
 import { notifyTicketEvent } from '../mailer';
-import { fanOutNotification } from '../notifications';
+import { fanOutNotification, listManagersFor } from '../notifications';
 
 export const ticketsRouter = Router();
 
@@ -55,7 +57,11 @@ export const ticketsRouter = Router();
 /* ------------------------------------------------------------------ */
 
 function canReadTicket(viewer: Viewer, ticket: Ticket): boolean {
+  // A request still waiting for approval is invisible to everyone but whoever
+  // submitted it, the tab's approvers and administrators — the agency included.
+  if (isHiddenUntilApproved(viewer, ticket)) return false;
   if (viewer.isAdmin) return true;
+  if (isApproverFor(viewer, ticket.area)) return canUseAnyBrand(viewer, ticket.brands);
   if (!hasSubmissionAccess(viewer)) return false;
   if (tabAccess(viewer, ticket.area) === 'none') return false;
   return canUseAnyBrand(viewer, ticket.brands);
@@ -121,6 +127,8 @@ async function handleWrite(req: Request, res: Response): Promise<Response> {
     if (action === 'correctStatus') return await correctStatus(req, res, viewer);
     if (action === 'bulk') return await bulkAction(req, res, viewer);
     if (action === 'updateTracking') return await updateTracking(req, res, viewer);
+    if (action === 'approve') return await approveTicket(req, res, viewer);
+    if (action === 'reject') return await rejectTicket(req, res, viewer);
     return res.status(400).json({ error: 'Unknown action.' });
   } catch (error) {
     console.error('[tickets]', action, error);
@@ -181,7 +189,12 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
   // Tabs with no ownership lock (TabDef.noOwnershipLock) have no "Accept &
   // assign to me" step for anyone to move it past New, so it starts already
   // actionable by the whole team.
-  const initialStatus: TicketStatus = tab.noOwnershipLock ? 'In progress' : 'New';
+  // A tab with approvers parks every new request on Hold until one of them approves it.
+  const initialStatus: TicketStatus = tab.approvers?.length
+    ? 'Hold'
+    : tab.noOwnershipLock
+      ? 'In progress'
+      : 'New';
 
   await query(
     `INSERT INTO tickets
@@ -223,11 +236,15 @@ async function createTicket(req: Request, res: Response, viewer: Viewer): Promis
  * not creating a new one.
  */
 async function editTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
-  if (!viewer.isAdmin) return res.status(403).json({ error: 'Administrators only.' });
-
   const id = String(req.body?.id ?? '');
   const ticket = await getTicket(id);
   if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+
+  // Administrators always; an approver only while the request waits for approval.
+  const approverEdit = ticket.status === 'Hold' && isApproverFor(viewer, ticket.area);
+  if (!viewer.isAdmin && !approverEdit) {
+    return res.status(403).json({ error: 'Administrators only.' });
+  }
 
   const tab = getTab(ticket.area);
   if (!tab) return res.status(400).json({ error: 'Unknown request tab.' });
@@ -336,7 +353,12 @@ async function correctStatus(req: Request, res: Response, viewer: Viewer): Promi
 async function updateTracking(req: Request, res: Response, viewer: Viewer): Promise<Response> {
   const id = String(req.body?.id ?? '');
   const ticket = await getTicket(id);
-  if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+  if (!ticket || isHiddenUntilApproved(viewer, ticket)) {
+    return res.status(404).json({ error: 'Request not found.' });
+  }
+  if (ticket.status === 'Hold') {
+    return res.status(409).json({ error: 'This request is waiting for approval.' });
+  }
 
   const tab = getTab(ticket.area);
   if (!tab || !hasTrackingFields(tab)) {
@@ -404,6 +426,102 @@ async function updateTracking(req: Request, res: Response, viewer: Viewer): Prom
   return res.json({ ticket: finalTicket });
 }
 
+/* ------------------------------------------------------------------ */
+/* Approval — a tab with TabDef.approvers (Digital Ads → Salma)         */
+/* ------------------------------------------------------------------ */
+
+/** Loads the request and checks the viewer may decide on it; sends the error response itself. */
+async function loadForApproval(
+  req: Request,
+  res: Response,
+  viewer: Viewer,
+): Promise<Ticket | null> {
+  const ticket = await getTicket(String(req.body?.id ?? ''));
+  if (!ticket || isHiddenUntilApproved(viewer, ticket)) {
+    res.status(404).json({ error: 'Request not found.' });
+    return null;
+  }
+  if (!isApproverFor(viewer, ticket.area)) {
+    res.status(403).json({ error: 'Only an approver can decide on requests in this tab.' });
+    return null;
+  }
+  if (!canUseAnyBrand(viewer, ticket.brands)) {
+    res.status(403).json({ error: 'You do not have access to this brand.' });
+    return null;
+  }
+  if (ticket.status !== 'Hold') {
+    res.status(409).json({ error: `This request is already ${ticket.status}.` });
+    return null;
+  }
+  return ticket;
+}
+
+/** Approve: Hold → New, stamped, and only now do the agency and the team get to see and hear about it. */
+async function approveTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
+  const ticket = await loadForApproval(req, res, viewer);
+  if (!ticket) return res;
+
+  const claimed = await query(
+    `UPDATE tickets SET status = 'New', approved_at = $2 WHERE id = $1 AND status = 'Hold'`,
+    [ticket.id, Date.now()],
+  );
+  if (!claimed.rowCount) {
+    return res.status(409).json({ error: 'This request was already decided.' });
+  }
+
+  const actor = { name: viewer.name, email: viewer.email };
+  await writeAudit(ticket.id, 'Approved', actor, { from: 'Hold', to: 'New' });
+  await writeEvent(
+    'ticket.updated',
+    'Request approved',
+    `${tabName(ticket.area)} · ${ticket.id} · ${ticket.title} — by ${viewer.name}`,
+    ticket.id,
+    ticket.area,
+  );
+
+  const approved = await getTicket(ticket.id);
+  if (approved) {
+    const team = await listManagersFor(approved.area, approved.brands);
+    notifyTicketEvent('approved', approved, actor, undefined, team);
+    await fanOutNotification('approved', approved, actor);
+  }
+  return res.json({ ticket: approved });
+}
+
+/** Decline at the approval stage: closes the request; the agency never sees it. */
+async function rejectTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
+  const reason = String(req.body?.declineReason ?? '').trim();
+  if (!reason) return res.status(400).json({ error: 'A decline reason is required.' });
+
+  const ticket = await loadForApproval(req, res, viewer);
+  if (!ticket) return res;
+
+  const claimed = await query(
+    `UPDATE tickets SET status = 'Declined', decline_reason = $2 WHERE id = $1 AND status = 'Hold'`,
+    [ticket.id, reason],
+  );
+  if (!claimed.rowCount) {
+    return res.status(409).json({ error: 'This request was already decided.' });
+  }
+
+  const actor = { name: viewer.name, email: viewer.email };
+  await writeAudit(ticket.id, 'Declined at approval', actor, { from: 'Hold', to: 'Declined', reason });
+  await writeEvent(
+    'ticket.updated',
+    'Request declined',
+    `${tabName(ticket.area)} · ${ticket.id} · ${ticket.title} — by ${viewer.name}`,
+    ticket.id,
+    ticket.area,
+  );
+
+  const declined = await getTicket(ticket.id);
+  if (declined) {
+    notifyTicketEvent('rejected', declined, actor, reason);
+    await fanOutNotification('rejected', declined, actor, reason);
+  }
+  return res.json({ ticket: declined });
+}
+
 type WorkflowOp = 'accept' | 'decline' | 'schedule' | 'done' | 'notes';
 
 async function updateTicket(req: Request, res: Response, viewer: Viewer): Promise<Response> {
@@ -411,7 +529,9 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
   const op = String(req.body?.op ?? '') as WorkflowOp;
 
   const ticket = await getTicket(id);
-  if (!ticket) return res.status(404).json({ error: 'Request not found.' });
+  if (!ticket || isHiddenUntilApproved(viewer, ticket)) {
+    return res.status(404).json({ error: 'Request not found.' });
+  }
   const tab = getTab(ticket.area);
 
   if (!hasSubmissionAccess(viewer)) {
@@ -422,6 +542,11 @@ async function updateTicket(req: Request, res: Response, viewer: Viewer): Promis
   }
   if (!canUseAnyBrand(viewer, ticket.brands)) {
     return res.status(403).json({ error: 'You do not have access to this brand.' });
+  }
+
+  // Nothing but an approver's approve / decline / edit may touch a request on Hold.
+  if (ticket.status === 'Hold') {
+    return res.status(409).json({ error: 'This request is waiting for approval.' });
   }
 
   const actor = { name: viewer.name, email: viewer.email };
@@ -565,6 +690,12 @@ async function touchHandledBy(id: string, tab: ReturnType<typeof getTab>, viewer
 /** The exact same rules as the "Mark Done" workflow action (spec §15.5). */
 async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
   const tab = getTab(ticket.area);
+  if (isHiddenUntilApproved(viewer, ticket)) {
+    return { ok: false, status: 404, error: 'Request not found.' };
+  }
+  if (ticket.status === 'Hold') {
+    return { ok: false, status: 409, error: 'This request is waiting for approval.' };
+  }
   if (!hasSubmissionAccess(viewer)) {
     return { ok: false, status: 403, error: 'Your role does not allow workflow actions.' };
   }
@@ -614,6 +745,12 @@ async function markTicketDone(ticket: Ticket, viewer: Viewer, actor: Actor): Pro
 /** The exact same rules as the "Schedule" workflow action (spec §15.4). */
 async function scheduleTicket(ticket: Ticket, viewer: Viewer, actor: Actor): Promise<ActionResult> {
   const tab = getTab(ticket.area);
+  if (isHiddenUntilApproved(viewer, ticket)) {
+    return { ok: false, status: 404, error: 'Request not found.' };
+  }
+  if (ticket.status === 'Hold') {
+    return { ok: false, status: 409, error: 'This request is waiting for approval.' };
+  }
   if (!hasSubmissionAccess(viewer)) {
     return { ok: false, status: 403, error: 'Your role does not allow workflow actions.' };
   }

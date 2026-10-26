@@ -95,6 +95,12 @@ export interface TabDef {
    * campaign dates closer than CAMPAIGN_DATE_SPACING_DAYS (e.g. Menu Updates).
    */
   noDateSpacing?: boolean;
+  /**
+   * Every new request in this tab starts on Hold and is only passed on after one
+   * of these people (or an administrator) approves it. Until then nobody else —
+   * agency accounts included — can see it or is notified about it.
+   */
+  approvers?: string[];
 }
 
 // A single request can cover several brands, so this is a multi-select; the
@@ -164,6 +170,7 @@ export const TABS: TabDef[] = [
     id: 'digital-ads',
     name: 'Digital Ads',
     prefix: 'DA',
+    approvers: ['salma@swishhh.net'],
     fields: [
       // An ad can run over a range, so End Date sits right after Campaign Date
       // (it also makes the ad a bar across its days on the calendar).
@@ -691,9 +698,11 @@ export interface ImportResult {
 // "Live" only ever occurs on a tab with TabDef.autoLiveLifecycle (Aggregator
 // Campaign) — see processCampaignLifecycle() in server/tickets.ts. Every
 // other tab's tickets never reach it.
-export type TicketStatus = 'New' | 'In progress' | 'Declined' | 'Scheduled' | 'Live' | 'Done';
+// "Hold" only occurs on a tab with TabDef.approvers: a new request waits there
+// until an approver approves (-> New), edits it, or declines it.
+export type TicketStatus = 'Hold' | 'New' | 'In progress' | 'Declined' | 'Scheduled' | 'Live' | 'Done';
 
-export const STATUSES: TicketStatus[] = ['New', 'In progress', 'Declined', 'Scheduled', 'Live', 'Done'];
+export const STATUSES: TicketStatus[] = ['Hold', 'New', 'In progress', 'Declined', 'Scheduled', 'Live', 'Done'];
 
 /** Statuses that no longer need staff action. */
 export const CLOSED_STATUSES: TicketStatus[] = ['Declined', 'Scheduled', 'Done'];
@@ -932,6 +941,36 @@ export interface Ticket {
   createdAt: number;
   acceptedAt: number | null;
   completedAt: number | null;
+  /** When an approver let the request through (tabs with approvers only), else null. */
+  approvedAt: number | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Approval (TabDef.approvers)                                         */
+/* ------------------------------------------------------------------ */
+
+export function approversFor(area: string): string[] {
+  return getTab(area)?.approvers ?? [];
+}
+
+/** Approvers named on the tab, plus administrators — who can always step in. */
+export function isApproverFor(viewer: Pick<Viewer, 'email' | 'isAdmin'>, area: string): boolean {
+  const approvers = approversFor(area);
+  return approvers.length > 0 && (viewer.isAdmin || approvers.includes(viewer.email.toLowerCase()));
+}
+
+/**
+ * Before approval a request is visible only to whoever submitted it, the
+ * approvers and administrators. Once approved it follows the normal rules.
+ */
+export function isHiddenUntilApproved(
+  viewer: Pick<Viewer, 'email' | 'isAdmin'>,
+  ticket: Pick<Ticket, 'area' | 'approvedAt' | 'requesterEmail'>,
+): boolean {
+  if (!approversFor(ticket.area).length) return false;
+  if (ticket.approvedAt !== null) return false;
+  if (viewer.email.toLowerCase() === ticket.requesterEmail.toLowerCase()) return false;
+  return !isApproverFor(viewer, ticket.area);
 }
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;

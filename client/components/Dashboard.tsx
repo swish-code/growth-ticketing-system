@@ -32,6 +32,7 @@ const PERIODS: { id: Period; label: string }[] = [
 ];
 
 const STATUS_COLOR: Record<TicketStatus, string> = {
+  Hold: 'var(--ink-muted)',
   New: 'var(--accent)',
   'In progress': 'var(--warning)',
   Declined: 'var(--critical)',
@@ -75,7 +76,10 @@ export function Dashboard({ user, tickets, onOpen }: Props) {
   const now = Date.now();
   const tabs = visibleTabs(user);
 
-  const isDelayed = (t: Ticket) => t.status === 'New' && now - t.createdAt > ACCEPTANCE_SLA_MS;
+  // The 24h acceptance clock starts when the request reaches the team, so a
+  // request that waited for approval is not already late the moment it's approved.
+  const readyAt = (t: Ticket) => t.approvedAt ?? t.createdAt;
+  const isDelayed = (t: Ticket) => t.status === 'New' && now - readyAt(t) > ACCEPTANCE_SLA_MS;
   const isOverdue = (t: Ticket) => !isClosed(t.status) && isLate(t, today);
 
   // Filters: tab + brand first, then the period.
@@ -144,7 +148,7 @@ export function Dashboard({ user, tickets, onOpen }: Props) {
       .map((t) => ({
         ticket: t,
         reason: isDelayed(t) ? ('sla' as const) : ('date' as const),
-        age: isDelayed(t) ? now - t.createdAt : now - new Date(`${t.campaignDate}T00:00:00`).getTime(),
+        age: isDelayed(t) ? now - readyAt(t) : now - new Date(`${t.campaignDate}T00:00:00`).getTime(),
       }))
       .sort((a, b) => b.age - a.age);
     return rows;
@@ -340,7 +344,7 @@ export function Dashboard({ user, tickets, onOpen }: Props) {
                 show({
                   title: 'Delayed over 24h',
                   subtitle: 'Not accepted within 24 hours of submission — oldest first',
-                  tickets: [...kpi.delayed].sort((a, b) => a.createdAt - b.createdAt),
+                  tickets: [...kpi.delayed].sort((a, b) => readyAt(a) - readyAt(b)),
                   showWaiting: true,
                 })
               }
@@ -612,7 +616,7 @@ export function Dashboard({ user, tickets, onOpen }: Props) {
                           <strong>{t.id}</strong>
                           <span className={statusClass(t.status)}>{t.status}</span>
                           {drill.showWaiting && (
-                            <span className="d-wait">waiting {formatDuration(now - t.createdAt)}</span>
+                            <span className="d-wait">waiting {formatDuration(now - (t.approvedAt ?? t.createdAt))}</span>
                           )}
                         </span>
                         <span className="d-title">{t.title}</span>

@@ -159,6 +159,9 @@
   color: var(--ink-2);
 }
 
+.chip-status-hold {
+  --chip: var(--ink-muted);
+}
 .chip-status-new {
   --chip: var(--accent);
 }

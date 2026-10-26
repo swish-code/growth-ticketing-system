@@ -105,6 +105,14 @@ export const api = {
     notes?: string;
   }) => post<{ ticket: Ticket }>('/api/tickets', { action: 'update', ...payload }),
 
+  /** Approver only: lets a request on Hold through to the team. */
+  approveTicket: (id: string) =>
+    post<{ ticket: Ticket }>('/api/tickets', { action: 'approve', id }),
+
+  /** Approver only: declines a request on Hold, with a reason. */
+  rejectTicket: (id: string, declineReason: string) =>
+    post<{ ticket: Ticket }>('/api/tickets', { action: 'reject', id, declineReason }),
+
   deleteTicket: (id: string) =>
     request<{ ok: true }>(`/api/tickets?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
 

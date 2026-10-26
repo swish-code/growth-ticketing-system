@@ -34,6 +34,7 @@ export interface TicketRow {
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
+  approved_at: string | null;
 }
 
 export function mapTicket(row: TicketRow): Ticket {
@@ -55,13 +56,14 @@ export function mapTicket(row: TicketRow): Ticket {
     createdAt: Number(row.created_at),
     acceptedAt: row.accepted_at === null ? null : Number(row.accepted_at),
     completedAt: row.completed_at === null ? null : Number(row.completed_at),
+    approvedAt: row.approved_at === null || row.approved_at === undefined ? null : Number(row.approved_at),
   };
 }
 
 export const TICKET_COLUMNS = `
   id, area, brand, title, campaign_date, status, owner_email,
   requester_email, requester_name, data, notes, decline_reason,
-  created_at, accepted_at, completed_at
+  created_at, accepted_at, completed_at, approved_at
 `;
 
 export async function getTicket(id: string): Promise<Ticket | null> {
@@ -227,7 +229,7 @@ export async function processDueAndEscalations(): Promise<void> {
 
   // 2. Acceptance SLA — still New more than 24h after submission (spec §16.1).
   const lateAcceptance = await query<TicketRow>(
-    `SELECT ${TICKET_COLUMNS} FROM tickets WHERE status = 'New' AND created_at < $1`,
+    `SELECT ${TICKET_COLUMNS} FROM tickets WHERE status = 'New' AND COALESCE(approved_at, created_at) < $1`,
     [now - ACCEPTANCE_SLA_MS],
   );
   for (const row of lateAcceptance.rows) {

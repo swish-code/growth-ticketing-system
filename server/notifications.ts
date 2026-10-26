@@ -1,5 +1,12 @@
 import crypto from 'node:crypto';
-import { canManage, canUseAnyBrand, tabName, type Notification, type Ticket } from '../shared/spec';
+import {
+  approversFor,
+  canManage,
+  canUseAnyBrand,
+  tabName,
+  type Notification,
+  type Ticket,
+} from '../shared/spec';
 import { resolveViewerByEmail } from './auth';
 import { query } from './db';
 import type { Actor } from './tickets';
@@ -20,6 +27,8 @@ import type { Actor } from './tickets';
 
 export type NotificationKind =
   | 'created'
+  | 'approved'
+  | 'rejected'
   | 'accepted'
   | 'declined'
   | 'scheduled'
@@ -40,7 +49,17 @@ function copyFor(kind: NotificationKind, ticket: Ticket, actor: Actor, detail?: 
 
   switch (kind) {
     case 'created':
-      return { title: 'New request submitted', message: `${tabName(ticket.area)} · ${id} · ${ticket.title} — by ${by}` };
+      return {
+        title: approversFor(ticket.area).length ? 'Request waiting for approval' : 'New request submitted',
+        message: `${tabName(ticket.area)} · ${id} · ${ticket.title} — by ${by}`,
+      };
+    case 'approved':
+      return { title: 'Request approved', message: `${tabName(ticket.area)} · ${id} · ${ticket.title} — approved by ${by}` };
+    case 'rejected':
+      return {
+        title: 'Request declined',
+        message: `${tabName(ticket.area)} · ${id} · ${ticket.title}${detail ? ` — ${detail}` : ''}`,
+      };
     case 'accepted':
       return { title: 'Request accepted', message: `${tabName(ticket.area)} · ${id} · ${ticket.title} — by ${by}` };
     case 'declined':
@@ -77,7 +96,7 @@ function copyFor(kind: NotificationKind, ticket: Ticket, actor: Actor, detail?: 
 }
 
 /** Every staff member who can currently Manage this tab for at least one of these brands. */
-async function listManagersFor(area: string, brands: string[]): Promise<string[]> {
+export async function listManagersFor(area: string, brands: string[]): Promise<string[]> {
   const staff = await query<{ email: string }>(`SELECT email FROM staff`);
   const viewers = await Promise.all(staff.rows.map((row) => resolveViewerByEmail(row.email)));
   return viewers
@@ -96,8 +115,17 @@ async function recipientsFor(kind: NotificationKind, ticket: Ticket, actor: Acto
     return listAdmins();
   }
   if (kind === 'created') {
+    // A tab with approvers: the new request goes to the approvers only. Telling
+    // the rest of the team (the agency included) before approval would leak it.
+    const approvers = approversFor(ticket.area);
+    if (approvers.length) return [...new Set([ticket.requesterEmail, ...approvers])];
     const managers = await listManagersFor(ticket.area, ticket.brands);
     return [...new Set([ticket.requesterEmail, ...managers])];
+  }
+  if (kind === 'approved') {
+    // Now it is theirs to work on: the requester and everyone who can manage the tab.
+    const managers = await listManagersFor(ticket.area, ticket.brands);
+    return [...new Set([ticket.requesterEmail, actor.email, ...managers])];
   }
   const all = [ticket.requesterEmail, ticket.ownerEmail, actor.email];
   return [...new Set(all.filter((e): e is string => Boolean(e && e.includes('@'))))];
@@ -117,7 +145,14 @@ async function recipientsFor(kind: NotificationKind, ticket: Ticket, actor: Acto
  * admin-only safety net (spec: overdue work), not part of this — they stay
  * on regardless of this list.
  */
-const IN_APP_KINDS = new Set<NotificationKind>(['created', 'done', 'sla.acceptance', 'sla.completion']);
+const IN_APP_KINDS = new Set<NotificationKind>([
+  'created',
+  'approved',
+  'rejected',
+  'done',
+  'sla.acceptance',
+  'sla.completion',
+]);
 
 export async function fanOutNotification(
   kind: NotificationKind,
