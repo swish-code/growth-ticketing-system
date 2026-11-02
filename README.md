@@ -129,7 +129,7 @@ Backend routes repeat every check — hiding UI is never treated as security.
 
 | Tab | Prefix | Notes |
 |---|---|---|
-| CRM WhatsApp | `CW` | Campaign date ≥ today + 3 days |
+| CRM (WhatsApp or SMS) | `CW` | Campaign date ≥ today + 3 days; pick the message channel |
 | Digital Ads | `DA` | Campaign date ≥ today + 3 days |
 | Influencer | `IN` | Campaign date ≥ today + 7 days |
 | Menu Updates | `MU` | Start date ≥ today + 5 days; 16 conditional fields |

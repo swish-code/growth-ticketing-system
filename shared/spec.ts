@@ -120,7 +120,7 @@ function insertAfter(fields: FieldDef[], label: string, field: FieldDef): FieldD
 
 const CHANNELS = ['Talabat', 'Keeta', 'Ordable', 'Deliveroo', 'Snoonu', 'V-thru', 'Jahez'];
 
-/** Fields 1–9 shared by CRM WhatsApp and Digital Ads (spec §8, §9). */
+/** Fields 1–9 shared by CRM and Digital Ads (spec §8, §9). */
 function campaignBaseFields(minDays: number): FieldDef[] {
   return [
     BRAND_FIELD,
@@ -141,13 +141,20 @@ function campaignBaseFields(minDays: number): FieldDef[] {
 }
 
 export const TABS: TabDef[] = [
-  /* ---------------------------- CRM WhatsApp (§8) --------------------------- */
+  /* --------------------------------- CRM (§8) -------------------------------- */
+  // The id stays 'crm-whatsapp' (it keys every existing request, permission and
+  // counter); only the name shown to people changed, since the tab now covers SMS too.
   {
     id: 'crm-whatsapp',
-    name: 'CRM WhatsApp',
+    name: 'CRM',
     prefix: 'CW',
     fields: [
-      ...campaignBaseFields(3),
+      ...insertAfter(campaignBaseFields(3), 'Campaign Name', {
+        label: 'Message Channel',
+        type: 'select',
+        required: true,
+        options: ['WhatsApp', 'SMS'],
+      }),
       {
         label: 'Targeted Customers',
         type: 'multi',
