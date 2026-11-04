@@ -112,6 +112,21 @@ const BRAND_FIELD: FieldDef = {
   options: [...BRANDS],
 };
 
+/**
+ * Recurring weekdays for a campaign that runs over a range but only on some days
+ * of the week (e.g. every Tuesday and Wednesday for a month): one request instead
+ * of one per week. Optional; left empty it means every day between Start and End.
+ * Listed the way the team counts the week, starting on Saturday.
+ */
+export const REPEAT_DAY_OPTIONS = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+export const REPEAT_ON_LABEL = 'Repeat On';
+const REPEAT_ON_FIELD: FieldDef = {
+  label: REPEAT_ON_LABEL,
+  type: 'multi',
+  required: false,
+  options: [...REPEAT_DAY_OPTIONS],
+};
+
 /** A copy of `fields` with `field` placed right after the one labelled `label`. */
 function insertAfter(fields: FieldDef[], label: string, field: FieldDef): FieldDef[] {
   const at = fields.findIndex((f) => f.label === label);
@@ -181,12 +196,16 @@ export const TABS: TabDef[] = [
     fields: [
       // An ad can run over a range, so End Date sits right after Campaign Date
       // (it also makes the ad a bar across its days on the calendar).
-      ...insertAfter(campaignBaseFields(3), 'Campaign Date', {
-        label: 'End Date',
-        type: 'date',
-        required: false,
-        mustBeOnOrAfter: 'Campaign Date',
-      }),
+      ...insertAfter(
+        insertAfter(campaignBaseFields(3), 'Campaign Date', {
+          label: 'End Date',
+          type: 'date',
+          required: false,
+          mustBeOnOrAfter: 'Campaign Date',
+        }),
+        'End Date',
+        REPEAT_ON_FIELD,
+      ),
       {
         label: 'CAMPAIGN OBJECTIVE',
         type: 'multi',
@@ -473,6 +492,7 @@ export const TABS: TabDef[] = [
       },
       { label: 'Start Date', type: 'date', required: true, minDaysFromToday: 7 },
       { label: 'End Date', type: 'date', required: true, mustBeAfter: 'Start Date' },
+      REPEAT_ON_FIELD,
       { label: 'Campaign', type: 'text', required: true },
       { label: 'Company', type: 'text', required: true },
       { label: 'Budget', type: 'number', required: true },
@@ -499,6 +519,7 @@ export const TABS: TabDef[] = [
       // campaigns that already started (or are a single day).
       { label: 'Start Date', type: 'date', required: true },
       { label: 'End Date', type: 'date', required: true, mustBeOnOrAfter: 'Start Date' },
+      REPEAT_ON_FIELD,
       {
         label: 'Digital Deliverables',
         type: 'select',
@@ -993,8 +1014,9 @@ const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function ticketDateSpan(ticket: Pick<Ticket, 'campaignDate' | 'data'>): string[] {
   const start = ticket.campaignDate;
   const endRaw = ticket.data['End Date'];
+  const repeat = repeatDaysOf(ticket.data);
   if (typeof endRaw !== 'string' || !DATE_KEY_RE.test(endRaw) || endRaw <= start) {
-    return [start];
+    return onRepeatDays([start], repeat);
   }
 
   const days: string[] = [];
@@ -1006,7 +1028,30 @@ export function ticketDateSpan(ticket: Pick<Ticket, 'campaignDate' | 'data'>): s
     days.push(toDateKey(cursor));
     cursor.setDate(cursor.getDate() + 1);
   }
-  return days;
+  return onRepeatDays(days, repeat);
+}
+
+const WEEKDAY_BY_JS_INDEX = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+export function weekdayName(dateKey: string): string {
+  return WEEKDAY_BY_JS_INDEX[new Date(`${dateKey}T00:00:00`).getDay()];
+}
+
+/** The weekdays picked in "Repeat On" (only known day names), or [] meaning every day. */
+function repeatDaysOf(data: FormValues): string[] {
+  const picked = data[REPEAT_ON_LABEL];
+  return Array.isArray(picked) ? picked.map(String).filter((d) => REPEAT_DAY_OPTIONS.includes(d)) : [];
+}
+
+function onRepeatDays(days: string[], repeat: string[]): string[] {
+  return repeat.length ? days.filter((day) => repeat.includes(weekdayName(day))) : days;
+}
+
+/** `dateKey` moved by a number of days (negative goes back). */
+export function shiftDateKey(dateKey: string, days: number): string {
+  const moved = new Date(`${dateKey}T00:00:00`);
+  moved.setDate(moved.getDate() + days);
+  return toDateKey(moved);
 }
 
 export interface AuditEntry {

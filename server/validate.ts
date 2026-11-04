@@ -1,7 +1,11 @@
 import {
+  REPEAT_ON_LABEL,
+  deriveCampaignDate,
   earliestDateFor,
   fieldSetting,
   isFieldVisible,
+  ticketDateSpan,
+  todayKey,
   type FieldDef,
   type FormSettings,
   type FormValues,
@@ -97,6 +101,19 @@ export function validateSubmission(
           return { error: `${field.label} must be on or after ${field.mustBeOnOrAfter}.` };
         }
       }
+    }
+  }
+
+  // Weekdays only make sense inside a range, and at least one of them has to land in it.
+  const repeat = values[REPEAT_ON_LABEL];
+  if (Array.isArray(repeat) && repeat.length) {
+    const end = values['End Date'];
+    if (typeof end !== 'string' || !end) {
+      return { error: 'Choose an End Date to repeat on specific weekdays.' };
+    }
+    const start = deriveCampaignDate(values, todayKey(now));
+    if (!ticketDateSpan({ campaignDate: start, data: values }).length) {
+      return { error: 'None of the selected weekdays falls between the start and end dates.' };
     }
   }
 

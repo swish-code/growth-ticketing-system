@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { getTab, ticketDateSpan, toDateKey, type Ticket } from '../../shared/spec';
+import { getTab, shiftDateKey, ticketDateSpan, toDateKey, type Ticket } from '../../shared/spec';
 import './calendar.css';
 
 export type DateBasis = 'campaign' | 'submitted';
@@ -56,36 +56,41 @@ interface Segment {
   lane: number;
 }
 
-function ticketRange(ticket: Ticket, basis: DateBasis): { start: string; end: string } {
-  if (basis === 'submitted') {
-    const day = toDateKey(ticket.createdAt);
-    return { start: day, end: day };
-  }
-  const span = ticketDateSpan(ticket);
-  return { start: span[0], end: span[span.length - 1] };
+/** Every day a request is on the calendar (a recurring one skips the days it doesn't run). */
+function ticketDays(ticket: Ticket, basis: DateBasis): Set<string> {
+  return new Set(basis === 'submitted' ? [toDateKey(ticket.createdAt)] : ticketDateSpan(ticket));
 }
 
 /**
- * Lays one week out Google-Calendar style: a multi-day request is a single
- * bar across its days (split only at the week edge), and bars are stacked
- * into lanes so none overlap. Longer and earlier bars take the top lanes.
+ * Lays one week out Google-Calendar style: a run of consecutive days is a single
+ * bar (split only at the week edge), and a request that skips days — "only Tuesday
+ * and Wednesday" — is a separate bar for each run. Bars are stacked into lanes so
+ * none overlap; longer and earlier bars take the top lanes.
  */
 function layoutWeek(week: DayCell[], tickets: Ticket[], basis: DateBasis): Segment[] {
-  const weekStart = week[0].key;
-  const weekEnd = week[6].key;
-  const colOf = new Map(week.map((cell, i) => [cell.key, i]));
+  const dayBefore = shiftDateKey(week[0].key, -1);
+  const dayAfter = shiftDateKey(week[6].key, 1);
 
   const segments: Omit<Segment, 'lane'>[] = [];
   for (const ticket of tickets) {
-    const { start, end } = ticketRange(ticket, basis);
-    if (start > weekEnd || end < weekStart) continue;
-    segments.push({
-      ticket,
-      startCol: colOf.get(start < weekStart ? weekStart : start) ?? 0,
-      endCol: colOf.get(end > weekEnd ? weekEnd : end) ?? 6,
-      continuesLeft: start < weekStart,
-      continuesRight: end > weekEnd,
-    });
+    const days = ticketDays(ticket, basis);
+    let col = 0;
+    while (col < 7) {
+      if (!days.has(week[col].key)) {
+        col += 1;
+        continue;
+      }
+      const startCol = col;
+      while (col + 1 < 7 && days.has(week[col + 1].key)) col += 1;
+      segments.push({
+        ticket,
+        startCol,
+        endCol: col,
+        continuesLeft: startCol === 0 && days.has(dayBefore),
+        continuesRight: col === 6 && days.has(dayAfter),
+      });
+      col += 1;
+    }
   }
 
   segments.sort(
@@ -188,7 +193,7 @@ export function MonthGrid({
               <div className="cal-week-bars" style={{ gridTemplateRows: `2.1rem repeat(${ROW_COUNT}, 1.6rem)` }}>
                 {shown.map((s) => (
                   <button
-                    key={`${s.ticket.id}-${week[0].key}`}
+                    key={`${s.ticket.id}-${week[0].key}-${s.startCol}`}
                     type="button"
                     className={`cal-bar ${STATUS_CHIP[s.ticket.status] ?? ''} ${
                       s.continuesLeft ? 'cont-left' : ''
