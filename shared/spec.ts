@@ -149,7 +149,9 @@ function campaignBaseFields(minDays: number): FieldDef[] {
     },
     { label: 'CAPTION IN EN', type: 'textarea', required: false, wide: true },
     { label: 'CAPTION IN AR', type: 'textarea', required: false, wide: true },
-    { label: 'Targeted Channel', type: 'select', required: true, options: CHANNELS },
+    // PEW PEW is one of our own brands/channels, not a delivery aggregator, so it is
+    // added here only — the Aggregator list in Aggregator Campaign stays CHANNELS as is.
+    { label: 'Targeted Channel', type: 'select', required: true, options: [...CHANNELS, 'PEW PEW'] },
     { label: 'Visual Link', type: 'url', required: true },
     { label: 'Additional Notes', type: 'textarea', required: false, wide: true },
   ];
