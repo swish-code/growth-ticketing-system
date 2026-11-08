@@ -547,6 +547,8 @@ export const TABS: TabDef[] = [
     listColumnInsteadOfAssignee: 'End Date',
     autoLiveLifecycle: true,
     noOwnershipLock: true,
+    // A tracker for many campaigns that often start together: no 3-day spacing between them.
+    noDateSpacing: true,
   },
 ];
 
