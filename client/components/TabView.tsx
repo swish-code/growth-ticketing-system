@@ -50,6 +50,7 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
   const [from, setFrom] = useState(EMPTY);
   const [to, setTo] = useState(EMPTY);
   const [aggregator, setAggregator] = useState(EMPTY);
+  const [channel, setChannel] = useState(EMPTY);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null);
@@ -58,6 +59,8 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
   const [trackingError, setTrackingError] = useState('');
 
   const aggregatorField = tab.fields.find((f) => f.label === 'Aggregator');
+  // CRM: WhatsApp or SMS (any tab that has a "Message Channel" field gets the filter).
+  const channelField = tab.fields.find((f) => f.label === 'Message Channel');
   const isMenuIssues = tab.id === MENU_ISSUES;
   const canSubmit = hasFormAccess(user);
   const canRead = hasSubmissionAccess(user);
@@ -124,9 +127,10 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
         const list = Array.isArray(value) ? value.map(String) : [String(value ?? '')];
         if (!list.includes(aggregator)) return false;
       }
+      if (channel && String(ticket.data['Message Channel'] ?? '') !== channel) return false;
       return true;
     });
-  }, [areaTickets, search, status, brand, from, to, aggregator]);
+  }, [areaTickets, search, status, brand, from, to, aggregator, channel]);
 
   /** Menu Issues tab summary: average submission → Done (spec §12.1). */
   const averageResponse = useMemo(() => {
@@ -273,6 +277,20 @@ export function TabView({ user, tab, tickets, onOpen, onNew, onChanged }: Props)
           <select value={aggregator} onChange={(e) => setAggregator(e.target.value)}>
             <option value="">All aggregators</option>
             {(aggregatorField.options ?? []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )}
+        {channelField && (
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            aria-label="Message channel"
+          >
+            <option value="">All channels</option>
+            {(channelField.options ?? []).map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>

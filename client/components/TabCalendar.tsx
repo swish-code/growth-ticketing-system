@@ -37,6 +37,8 @@ export function TabCalendar({ user, tab, tickets, onOpen, onCreateForDate }: Pro
   const [month, setMonth] = useState(now.getMonth());
   const [brand, setBrand] = useState('');
   const [status, setStatus] = useState('');
+  const [channel, setChannel] = useState('');
+  const channelField = tab.fields.find((f) => f.label === 'Message Channel');
   const [basis, setBasis] = useState<DateBasis>('campaign');
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -64,9 +66,10 @@ export function TabCalendar({ user, tab, tickets, onOpen, onCreateForDate }: Pro
       areaTickets.filter((ticket) => {
         if (brand && !ticket.brands.includes(brand)) return false;
         if (status && ticket.status !== status) return false;
+        if (channel && String(ticket.data['Message Channel'] ?? '') !== channel) return false;
         return true;
       }),
-    [areaTickets, brand, status],
+    [areaTickets, brand, status, channel],
   );
 
   const byDay = useMemo(() => {
@@ -135,6 +138,20 @@ export function TabCalendar({ user, tab, tickets, onOpen, onCreateForDate }: Pro
             </option>
           ))}
         </select>
+        {channelField && (
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value)}
+            aria-label="Message channel"
+          >
+            <option value="">All channels</option>
+            {(channelField.options ?? []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <p className="cal-date-note">
